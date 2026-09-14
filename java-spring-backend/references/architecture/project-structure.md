@@ -76,6 +76,26 @@ src/test/resources/
 
 If the project already uses another clear business directory name, keep it.
 
+### 2.1 Establish Logical Boundaries Before Physical Distribution
+
+First establish a clear business or use-case boundary in the code. Do not introduce a Maven module, separate JAR, RPC / HTTP contract, message boundary, or microservice solely because the capability might need independent deployment later.
+
+Strengthen physical isolation only when there is a current reason such as:
+
+```text
+independent release or versioning
+independent runtime scaling
+independent team ownership
+real dependency isolation
+separate deployment or operational requirements
+```
+
+Do not pay distributed-system or module-management costs for hypothetical future needs.
+
+Principle:
+
+> Establish logical independence first; strengthen physical distribution only when a real current requirement justifies it.
+
 ---
 
 ## 3. Prefer Business-First to Technology-First Organization
@@ -106,6 +126,18 @@ mapper.casecenter
 Business-first organization improves discoverability, ownership, and module cohesion.
 
 If the target project already stably uses a technology-first layout, do not migrate it without authorization.
+
+### 3.1 Group by Common Reason to Change
+
+Group code primarily by business ownership and reason to change, not merely because classes share a technical type, annotation, field shape, or implementation pattern.
+
+For example, Place request models, Services, policies, and adapters may have different technical roles but still belong to one Place business boundary when they change for Place-related reasons.
+
+Do not create or expand global technical buckets merely because all contained classes are Services, DTO-like models, handlers, or utilities.
+
+Principle:
+
+> Code that changes for the same business reason should remain cohesive even when its classes have different technical roles.
 
 ---
 
@@ -279,6 +311,8 @@ Which responsibility Package owns it?            ← layering.md
         ↓
 Where is that Package physically located?         ← this document
         ↓
+Is a stronger physical boundary actually required now?
+        ↓
 Is a new directory or class actually necessary?
 ```
 
@@ -292,14 +326,15 @@ When adding modules, Packages, or broad physical moves, check:
 
 1. The target project's existing structure and similar modules were inspected first.
 2. An existing project was not forced into a new top-level layout without authorization.
-3. New business code remains cohesive rather than scattered across global technical directories.
+3. New business code remains cohesive around a common business reason to change rather than being scattered by technical type.
 4. Only responsibility Packages that actually exist were created.
 5. Model semantics and Package responsibility were taken from `layering.md`, not reinvented here.
 6. `common` contains genuinely shared capabilities rather than business-specific code.
 7. Catch-all directories such as `util`, `constant`, or `third` were not created without a stable responsibility.
 8. Third-party integrations are physically owned by the correct module or shared technical boundary.
 9. Package choice follows the class's logical responsibility rather than file proximity or call convenience.
-10. A structural change does not silently become a broad architectural migration.
+10. A new Maven module, JAR, remote contract, message boundary, or service is backed by a current isolation / deployment need rather than hypothetical future distribution.
+11. A structural change does not silently become a broad architectural migration.
 
 Final principle:
 
