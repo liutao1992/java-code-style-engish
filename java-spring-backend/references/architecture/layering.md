@@ -104,7 +104,7 @@ Preferred:
 
 ```text
 HTTP Controller ───┐
-RPC Endpoint ──────┼→ PlaceService
+RPC Endpoint ──────┼→ PlaceManageService
 Consumer ──────────┘
 ```
 
@@ -169,7 +169,7 @@ Use SOLID to identify real problems in responsibility, substitutability, extensi
 
 A class should center on one primary responsibility and one main reason to change.
 
-For example, `PlaceService` should not simultaneously own:
+For example, `PlaceManageService` should not simultaneously own:
 
 ```text
 business flow
@@ -304,7 +304,58 @@ process
 doSomething
 ```
 
-## 4.1 Service Method Naming
+## 4.1 Service Class Naming
+
+When a Service primarily provides ordinary resource management for a business module—especially CRUD, query, list, count, create/save, update, and delete/remove capabilities—use the `*ManageService` suffix.
+
+Preferred:
+
+```text
+PlaceManageService
+CaseManageService
+EquipmentManageService
+```
+
+For example, if one Place Service exposes capabilities such as:
+
+```text
+getPlace
+listPlaces
+countPlaces
+savePlace
+updatePlace
+removePlace
+```
+
+then the class should be named:
+
+```text
+PlaceManageService
+```
+
+rather than the overly broad:
+
+```text
+PlaceService
+```
+
+The `Manage` qualifier makes the class responsibility explicit: it is the module-level management surface for ordinary create, read, update, delete, and query operations.
+
+Do not apply `Manage` mechanically to every Service. A Service centered on a specific business use case or domain action should use the name that best expresses that responsibility, for example:
+
+```text
+PlaceAuditService
+CaseRegistrationService
+OrderDeliveryService
+```
+
+If the target project already has a stable historical naming contract, do not rename unrelated existing Services merely to satisfy this convention. Apply the convention to new Services and to Services being intentionally renamed or significantly reshaped by the current task.
+
+Principle:
+
+> CRUD / query / resource-management responsibility → `*ManageService`; focused business-use-case responsibility → a specific action- or capability-oriented Service name.
+
+## 4.2 Service Method Naming
 
 For ordinary CRUD / query-oriented business capabilities, when the target project has no more specific stable convention, prefer:
 
@@ -317,7 +368,7 @@ delete              → remove
 modify              → update
 ```
 
-For example:
+For example, in `PlaceManageService`:
 
 ```java
 PlaceVO getPlace(String id);
@@ -374,9 +425,9 @@ Concrete data-access naming for Mapper / DAO is maintained by the persistence-fr
 
 Principle:
 
-> CRUD-oriented Services use stable prefixes to reduce cognitive cost; when a clear business action exists, express that business meaning instead of letting a naming template hide the real use case.
+> CRUD-oriented ManageServices use stable method prefixes to reduce cognitive cost; when a clear business action exists, express that business meaning instead of letting a naming template hide the real use case.
 
-## 4.2 Splitting Services
+## 4.3 Splitting Services
 
 A growing Service is only a signal. Split by business capability only when independently nameable and independently changing use cases emerge, for example:
 
@@ -420,7 +471,7 @@ The focus of a Manager is application-level reuse, composition, and atomic capab
 For example:
 
 ```text
-PlaceService
+PlaceManageService
     ↓
 FaceRecognitionManager
     ↓
@@ -432,7 +483,7 @@ Vendor HTTP / SDK
 A simple case may use:
 
 ```text
-PlaceService → FaceRecognitionClient
+PlaceManageService → FaceRecognitionClient
 ```
 
 Do not create a pass-through Manager merely because “Service must not call Client.”
@@ -723,15 +774,15 @@ Within the same application, cross-module calls should preferably go through the
 Preferred:
 
 ```text
-CaseService
+CaseManageService
     ↓
-PlaceService / PlaceFacade
+PlaceManageService / PlaceFacade
 ```
 
 Avoid:
 
 ```text
-CaseService
+CaseManageService
     ↓
 PlaceMapper
 ```
