@@ -1,6 +1,6 @@
 interface:
   display_name: "Java Spring Backend Development"
-  short_description: "Develop Java/Spring backends according to team standards, loading module structure, layering, API, MyBatis/Rabbit-SQL/SQL, transaction, concurrency, and testing rules on demand"
-  default_prompt: "Use $java-spring-backend to complete the current backend task according to the target project's existing design. First determine responsibilities and the persistence framework, load only the required references, make only necessary changes, and run the relevant validation."
+  short_description: "Implement Java/Spring/MyBatis/Rabbit-SQL/PostgreSQL backend changes using centralized team standards and clear responsibility boundaries"
+  default_prompt: "Use $java-spring-backend to implement the current backend task according to the target project's existing design. Build context, determine responsibilities, use references/routing.md to load only the required standards, and make the minimum necessary code change. Do not duplicate formal code review or executable verification; use $backend-code-review and $review-and-test for those completion stages."
 policy:
   allow_implicit_invocation: true

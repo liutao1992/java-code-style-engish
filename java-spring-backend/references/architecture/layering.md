@@ -1,24 +1,22 @@
 # Application Layering Standard
 
-This document defines logical application layers, responsibility boundaries, dependency direction, model classification, and **responsibility Packages**.
+This document defines **logical application responsibilities**, dependency direction, model classification, responsibility Packages, and SOLID-related boundaries.
 
-This document answers:
+It answers:
 
-> What responsibility does a class have in the application, what may it depend on, and which responsibility Package does it belong to?
+> What is this class logically responsible for, what may it depend on, and which responsibility Package should contain it?
 
-For the **physical location and directory organization** of a project / module, read:
+It does **not** define the project's physical module/root-directory layout; use [project-structure.md](project-structure.md) for that. It also does not decide whether a business rule is a stable core invariant or an application use-case rule; use [business-rules.md](business-rules.md) for that.
 
-- [Project and Business Module Structure](project-structure.md)
-
-Java implementation, Spring annotations, HTTP contracts, exceptions, SQL, transactions, and concurrency are maintained by their dedicated references and are not duplicated here.
+Java implementation, Spring annotations, HTTP contracts, exceptions, SQL, transactions, concurrency, and testing are maintained by their dedicated references.
 
 Core principle:
 
-> Determine responsibility first, then determine the Package. Isolate volatile protocols and technical details, and do not mechanically add call layers.
+> Determine logical responsibility first, then responsibility Package, then use `project-structure.md` to locate that Package physically.
 
 ---
 
-# 1. Default Logical Layers
+## 1. Default Logical Layers
 
 ```text
                     Inbound Adapters
@@ -33,51 +31,41 @@ Core principle:
           Mapper / DAO      Client / Adapter
                ↓                  ↓
             Database      Third-party / External System
-                    Outbound Adapters
 ```
 
-Responsibilities can be summarized as:
+Logical responsibilities:
 
 ```text
 Inbound adapter
-→ how the outside world enters the application
+→ accept an external protocol and enter the application
 
 Service
-→ what the current business use case needs to do
+→ express a business use case / application flow
 
 Manager (optional)
-→ reusable application capabilities, composite operations, atomic operations
+→ reusable application capability, composition, or atomic operation
 
 Mapper / DAO
-→ how the database is accessed
+→ access the database
 
 Client / Adapter
-→ how external technical systems are accessed and adapted
+→ access and adapt external technical systems
 ```
 
-Manager is optional. Simple business flows may use:
+Simple flows may skip optional layers:
 
 ```text
 Controller → Service → Mapper
-```
-
-or:
-
-```text
 Controller → Service → Client
 ```
 
-Do not mechanically create a Manager merely to make the layering look “complete.”
-
-Principle:
-
-> Upper layers may depend on lower layers or stable abstractions; lower layers must not depend back on upper layers. The number of layers is determined by real responsibilities.
+Do not create a Manager, Facade, Repository wrapper, or other layer merely to make the diagram complete.
 
 ---
 
-## 1.1 Inbound Adapters
+## 2. Inbound and Outbound Boundaries
 
-Common inbound forms include:
+Typical inbound adapters include:
 
 ```text
 HTTP Controller
@@ -88,19 +76,9 @@ Scheduled Task
 Command / Job Handler
 ```
 
-Shared responsibilities:
+They may receive external input, perform protocol-level binding and structural validation, obtain trusted caller context, invoke a Service / Facade, and convert application output to the required protocol response.
 
-* receive external input or triggers;
-* parse the protocol;
-* perform structural validation required by the current protocol entry point;
-* obtain trusted caller context;
-* convert the request into an application call;
-* invoke a Service / Facade;
-* convert application output into the response or acknowledgement required by the protocol.
-
-Adapters for different protocols should not call one another merely to reuse business logic.
-
-Preferred:
+Different inbound adapters should not call one another merely to reuse business logic:
 
 ```text
 HTTP Controller ───┐
@@ -108,18 +86,7 @@ RPC Endpoint ──────┼→ PlaceManageService
 Consumer ──────────┘
 ```
 
-Avoid:
-
-```text
-RPC Endpoint → HTTP Controller → Service
-Consumer → Controller
-```
-
----
-
-## 1.2 Outbound Adapters
-
-Common outbound forms include:
+Typical outbound adapters include:
 
 ```text
 Mapper / DAO
@@ -131,81 +98,56 @@ Message Producer
 External Data Client
 ```
 
-Database access and external technical calls are both outbound boundaries, but they have different responsibilities:
+Database access and external-system access are separate outbound responsibilities. Do not force HTTP, RPC, SDK, object storage, or message sending into Mapper / DAO.
 
-```text
-Mapper / DAO
-→ Database
-
-Client / Adapter
-→ External System / Vendor Protocol
-```
-
-Do not force HTTP, RPC, SDK, object storage, or message sending into Mapper / DAO merely to “unify the lower layer.”
-
----
-
-## 1.3 The Business Core Should Not Know Protocol Details
-
-Service / Manager should normally not depend directly on:
+Service / Manager should normally not depend directly on protocol-specific types such as:
 
 ```text
 HttpServletRequest / HttpServletResponse / ResponseEntity
 RPC framework Request / Context
 messaging middleware Record / Message
-third-party SDK Request / Response / Exception
+vendor SDK Request / Response / Exception
 database physical column names
 ```
 
-Protocol-specific and vendor-specific types should be converted at the appropriate inbound / outbound boundary into stable semantics understood by the application.
+Convert volatile protocol details at the appropriate boundary.
 
 ---
 
-# 2. SOLID and Simple Design
+## 3. SOLID and Simple Design
 
-Use SOLID to identify real problems in responsibility, substitutability, extensibility, interface design, and dependency direction—not to mechanically add design patterns.
+Use SOLID to identify concrete responsibility and dependency problems, not to manufacture abstractions.
 
-## 2.1 SRP
+### SRP
 
-A class should center on one primary responsibility and one main reason to change.
+A class should center on one primary responsibility and reason to change. `PlaceManageService` should not simultaneously own business flow, HTTP response construction, SQL, and vendor SDK parsing.
 
-For example, `PlaceManageService` should not simultaneously own:
+SRP does not mean one method per class.
 
-```text
-business flow
-+ HTTP response construction
-+ SQL
-+ third-party SDK protocol parsing
-```
+### OCP
 
-But SRP does not mean “one method per class,” nor does slightly more code automatically justify extracting a Manager.
+Introduce Strategy, Handler, Factory, or other extension points only when a real, stable direction of variation exists.
 
-## 2.2 OCP
+### LSP
 
-Introduce extension points such as Strategy, Handler, or Factory only when a real, stable, recurring direction of variation exists.
+An implementation must preserve the abstraction's contract for inputs, returns, Null behavior, exceptions, side effects, and state changes.
 
-Do not abstract in advance for speculative future changes.
+### ISP
 
-## 2.3 LSP
+Split interfaces around real consumers and implementers, not mechanically by method count.
 
-An implementation must not violate the contract of its abstraction for inputs, returns, Null behavior, exceptions, side effects, or state changes.
+### DIP
 
-## 2.4 ISP
+High-level business code should not couple directly to volatile vendors or protocols when a stable boundary provides real isolation value.
 
-Split interfaces around real consumer / implementer boundaries, not mechanically by method count.
-
-## 2.5 DIP
-
-High-level business code should not couple directly to volatile vendors or technical protocols. When there is a real need for replacement, isolation, or testing, isolate them behind stable boundaries such as Client / Adapter / SPI.
-
-DIP does **not** mean:
+DIP does not require:
 
 ```text
 all Service → ServiceImpl
 all Mapper → Repository → RepositoryImpl
 ```
 
-## 2.6 Overengineering
+### Overengineering
 
 Without a real need for replacement, extension, reuse, or isolation, do not mechanically create:
 
@@ -221,92 +163,58 @@ Manager
 
 Principle:
 
-> SOLID should reduce real complexity, not manufacture new complexity.
+> SOLID should remove concrete complexity, not create ceremonial layers.
 
 ---
 
-# 3. Controller / Web Layer
+## 4. Controller / Web Responsibility
 
 A Controller is an HTTP inbound adapter.
 
-Primary responsibilities:
+It may:
 
-* bind HTTP parameters;
-* perform structural input validation;
-* obtain request-related caller context;
-* invoke a Service;
-* perform necessary protocol conversion.
+- bind HTTP parameters;
+- perform structural input validation;
+- obtain trusted request/caller context;
+- invoke a Service;
+- perform necessary protocol conversion.
 
-Forbidden responsibilities:
-
-* Controller → Mapper / DAO;
-* writing SQL;
-* defining business transactions;
-* owning business state transitions;
-* complex cross-data-source business composition in the Controller;
-* using database DOs directly to execute a business flow.
-
-If current user, department, tenant, or data-scope information comes from the Web Request, `SecurityContext`, or a request ThreadLocal, obtain it at the inbound boundary and explicitly pass a responsibility-specific object such as:
+It must not own:
 
 ```text
-Operator
-CallerContext
-the project's existing unified caller context
+Controller → Mapper / DAO
+SQL
+business transactions
+business state transitions
+complex business composition
+persistence DOs as a public API contract
 ```
 
-Do not make Service / Manager depend back on Web objects merely to obtain the “current request user.”
+If caller identity, tenant, department, or data-scope context comes from Web infrastructure, convert it at the inbound boundary into the project's stable caller-context representation rather than making Service / Manager depend back on Web objects.
 
-If the project already has a unified context mechanism that safely covers multiple entry points, reuse it rather than creating a second Context model.
-
-For Spring MVC usage read `spring.md`; for URL, Method, Request, VO, and unified response contracts read `api-design.md`.
-
-Principle:
-
-> Controller should do only what the protocol boundary must do; business decisions belong in Service.
+For Spring MVC mechanisms use `spring.md`; for external HTTP contracts use `api-design.md`.
 
 ---
 
-# 4. Service Layer
+## 5. Service Responsibility
 
-Service owns business use cases and business flows.
+Service is the default application use-case boundary in this Skill Pack.
 
-Primary responsibilities:
+It may:
 
-* implement business use cases;
-* perform business validation;
-* coordinate multiple business capabilities;
-* orchestrate Managers or stable outbound capabilities;
-* in simple cases, call Mapper / Client directly;
-* organize business input and output.
+- implement business use cases and flows;
+- perform business validation;
+- coordinate business capabilities;
+- call Manager / Mapper / Client according to actual complexity;
+- organize application input and output.
 
-Service does not own:
+It must not own HTTP protocol details, SQL, physical database mapping, or vendor-specific SDK protocol handling.
 
-* HTTP Status / HTTP response protocol;
-* SQL;
-* database column mapping;
-* third-party SDK protocol details.
+Whether a rule should remain in Service / Manager or move into a behavioral business object is decided by [business-rules.md](business-rules.md).
 
-Method names should preferably express clear business behavior:
+### 5.1 Service Class Naming
 
-```text
-audit
-register
-approve
-reject
-bindEquipment
-```
-
-Avoid long-term use of meaningless names such as:
-
-```text
-handle
-process
-doSomething
-```
-
-## 4.1 Service Class Naming
-
-When a Service primarily provides ordinary resource management for a business module—especially CRUD, query, list, count, create/save, update, and delete/remove capabilities—use the `*ManageService` suffix.
+When a Service primarily provides ordinary resource management—CRUD, query, list, count, create/save, update, delete/remove—prefer the `*ManageService` suffix when the target project has no stronger existing convention.
 
 Preferred:
 
@@ -316,32 +224,7 @@ CaseManageService
 EquipmentManageService
 ```
 
-For example, if one Place Service exposes capabilities such as:
-
-```text
-getPlace
-listPlaces
-countPlaces
-savePlace
-updatePlace
-removePlace
-```
-
-then the class should be named:
-
-```text
-PlaceManageService
-```
-
-rather than the overly broad:
-
-```text
-PlaceService
-```
-
-The `Manage` qualifier makes the class responsibility explicit: it is the module-level management surface for ordinary create, read, update, delete, and query operations.
-
-Do not apply `Manage` mechanically to every Service. A Service centered on a specific business use case or domain action should use the name that best expresses that responsibility, for example:
+Use focused capability names for focused business use cases:
 
 ```text
 PlaceAuditService
@@ -349,62 +232,33 @@ CaseRegistrationService
 OrderDeliveryService
 ```
 
-If the target project already has a stable historical naming contract, do not rename unrelated existing Services merely to satisfy this convention. Apply the convention to new Services and to Services being intentionally renamed or significantly reshaped by the current task.
+Do not rename unrelated stable Services merely to satisfy this convention.
 
-Principle:
+### 5.2 Service Method Naming
 
-> CRUD / query / resource-management responsibility → `*ManageService`; focused business-use-case responsibility → a specific action- or capability-oriented Service name.
-
-## 4.2 Service Method Naming
-
-For ordinary CRUD / query-oriented business capabilities, when the target project has no more specific stable convention, prefer:
+For ordinary CRUD/query capabilities, prefer stable business-oriented prefixes when no project convention overrides them:
 
 ```text
-get one object      → get
-get multiple objects→ list
-get a count         → count
-create / save       → save
-delete              → remove
-modify              → update
+get one       → get
+get many      → list
+count         → count
+create / save → save
+delete        → remove
+modify        → update
 ```
 
-For example, in `PlaceManageService`:
+Example:
 
 ```java
 PlaceVO getPlace(String id);
-
 List<PlaceVO> listPlaces(PlaceQuery query);
-
 long countPlaces(PlaceQuery query);
-
 void savePlace(PlaceSaveRequest request);
-
 void removePlace(String id);
-
 void updatePlace(PlaceUpdateRequest request);
 ```
 
-Collection-returning methods use the `list` prefix. When the method directly denotes a resource collection, prefer a plural noun:
-
-```text
-listPlaces
-listCases
-listEquipmentItems
-```
-
-If the focus is the filtering semantics, these forms are also valid:
-
-```text
-listByStatus
-listByQuery
-listAvailablePlaces
-```
-
-Do not sacrifice clearer business meaning just to satisfy a “plural suffix” preference.
-
-`save` expresses a create / save business action at the Service layer. If creation and modification have different business meaning, use separate responsibility-specific methods instead of blurring all writes into `save`.
-
-A real business action takes precedence over a CRUD template. For example:
+Real business actions take precedence over CRUD templates:
 
 ```text
 auditPlace
@@ -414,151 +268,72 @@ registerCase
 bindEquipment
 ```
 
-When these names already express the use case accurately, do not mechanically rename them to:
+Do not mirror persistence terminology such as `insert` / `delete` one-to-one at the Service boundary when business wording is clearer.
 
-```text
-updatePlace
-saveCase
-```
+### 5.3 Splitting Services
 
-Concrete data-access naming for Mapper / DAO is maintained by the persistence-framework references: read `mybatis.md` for MyBatis / MyBatis-Plus and `rabbit-sql.md` for Rabbit-SQL. Service should not use persistence terms such as `insert` / `delete` merely to mirror database operations one-to-one.
+Split a growing Service only when independently nameable and independently changing business capabilities emerge. File length or method count alone is insufficient.
 
-Principle:
-
-> CRUD-oriented ManageServices use stable method prefixes to reduce cognitive cost; when a clear business action exists, express that business meaning instead of letting a naming template hide the real use case.
-
-## 4.3 Splitting Services
-
-A growing Service is only a signal. Split by business capability only when independently nameable and independently changing use cases emerge, for example:
-
-```text
-OrderQueryService
-OrderCreateService
-OrderDeliveryService
-```
-
-Do not create these merely because of line or method count:
-
-```text
-OrderHelperService
-OrderCommonService
-OrderValidatorService
-```
-
-unless they truly have independent, stable responsibilities.
-
-Principle:
-
-> Split Services by use case and reason to change, not mechanically by file length.
+Avoid vague extra layers such as `CommonService`, `HelperService`, or `ValidatorService` unless they truly represent a stable independent responsibility.
 
 ---
 
-# 5. Manager Layer
+## 6. Manager Responsibility
 
-Manager is an **optional application-capability layer**.
+Manager is an optional application-capability layer for real reuse, composition, or atomic operations, for example:
 
-Appropriate uses include:
+- meaningful composition of multiple Mappers / Clients;
+- reusable data operations;
+- atomic multi-table operations;
+- cache + data-access composition;
+- reusable complex data assembly.
 
-* meaningful composition of multiple Mappers / Clients;
-* reusable data operations;
-* atomic multi-table operations;
-* application-level composition of cache + data access;
-* application-level composition of multiple external capabilities;
-* complex data assembly required by multiple Service use cases.
+Manager is not the vendor-protocol boundary; Client / Adapter owns that.
 
-The focus of a Manager is application-level reuse, composition, and atomic capabilities—not adaptation of a third-party protocol.
+A simple flow may call Mapper or Client directly from Service. Do not create a pass-through Manager merely because another layer seems desirable.
 
-For example:
-
-```text
-PlaceManageService
-    ↓
-FaceRecognitionManager
-    ↓
-FaceRecognitionClient
-    ↓
-Vendor HTTP / SDK
-```
-
-A simple case may use:
-
-```text
-PlaceManageService → FaceRecognitionClient
-```
-
-Do not create a pass-through Manager merely because “Service must not call Client.”
-
-Whether a transaction belongs in Manager is determined by the consistency scope; read `transactions.md`. Do not create a Manager merely because you want somewhere to place a transaction annotation.
-
-Principle:
-
-> Manager exists because a real application capability exists—not because a layer or annotation needs a home.
+Transaction placement follows the consistency scope defined by `transactions.md`, not the existence of a Manager class.
 
 ---
 
-# 6. Mapper / DAO Layer
+## 7. Mapper / DAO Responsibility
 
-Mapper / DAO is the outbound boundary for database access. It is responsible for:
-
-* SELECT;
-* INSERT;
-* UPDATE;
-* DELETE;
-* parameter and result mapping;
-* SQL execution.
-
-It is not responsible for:
-
-* business permission decisions;
-* business state transitions;
-* complete business flows;
-* third-party service calls;
-* business transaction orchestration.
-
-Choose framework-specific rules based on the persistence technology actually in use: read `mybatis.md` for MyBatis / MyBatis-Plus and `rabbit-sql.md` for Rabbit-SQL. SQL itself is governed by `sql.md`. Do not assume a framework merely because an interface is named Mapper / DAO.
-
----
-
-# 7. Client / Adapter Layer
-
-Client / Adapter is the outbound boundary for external technical systems. It is a peer of Mapper / DAO, not a sublayer of Mapper.
-
-Responsibilities:
-
-* HTTP / RPC / SDK calls;
-* vendor authentication and protocol parameters;
-* vendor Request / Response conversion;
-* isolation of external error codes and exceptions;
-* normalization of external nullable values or other protocol-specific differences;
-* technical details such as timeout, connection, and serialization required by the integration.
-
-It is not responsible for:
-
-* orchestrating the current application's business use case;
-* constructing HTTP Controller responses;
-* coordinating multiple business state transitions;
-* absorbing unrelated business decisions merely to reduce Service code.
-
-Depending on the project's existing terminology, names may include:
+Mapper / DAO is the outbound database boundary for:
 
 ```text
-Client
-Adapter
-Gateway
-Integration
+SELECT
+INSERT
+UPDATE
+DELETE
+parameter/result mapping
+SQL execution
 ```
 
-Do not mechanically migrate one naming convention to another.
+It does not own business permission decisions, business state transitions, complete use cases, vendor calls, or business transaction orchestration.
 
-Principle:
-
-> Client / Adapter isolates volatile technical protocols; Manager composes application capabilities; Service expresses business use cases.
+Choose framework-specific rules only after identifying the actual persistence technology: `mybatis.md` for MyBatis/MyBatis-Plus, `rabbit-sql.md` for Rabbit-SQL, and `sql.md` for SQL semantics.
 
 ---
 
-# 8. Call and Dependency Rules
+## 8. Client / Adapter Responsibility
 
-Default recommendation:
+Client / Adapter isolates external technical systems and may own:
+
+- HTTP / RPC / SDK calls;
+- vendor authentication and protocol parameters;
+- vendor Request / Response conversion;
+- external error-code normalization;
+- technical timeout, connection, and serialization details required by the integration.
+
+It should not orchestrate the application's business use case or absorb unrelated business decisions merely to reduce Service code.
+
+Depending on project terminology, names may include `Client`, `Adapter`, `Gateway`, or `Integration`. Do not rename a stable convention mechanically.
+
+---
+
+## 9. Dependency Direction
+
+Default logical dependencies:
 
 ```text
 Inbound adapter → Service
@@ -568,7 +343,7 @@ Mapper → Database
 Client / Adapter → External System
 ```
 
-Forbidden:
+Forbidden directions include:
 
 ```text
 Controller → Mapper
@@ -577,199 +352,75 @@ Client → Service
 lower layer → Controller
 ```
 
-Simple flows may skip optional layers, but must not tunnel through technical details that should remain hidden.
-
-For example:
-
-```text
-Service → Mapper
-```
-
-is allowed;
-
-```text
-Controller → Mapper
-```
-
-is not.
+Simple flows may skip optional layers but must preserve responsibility boundaries.
 
 ---
 
-# 9. Model Classification and Package Placement
+## 10. Model Classification and Responsibility Packages
 
-Classify models by responsibility instead of naming all data objects DTOs.
+Classify models by responsibility instead of naming every data object DTO.
 
-The default model system first groups by Package / boundary, then uses class names to express finer semantics:
+Default logical mapping:
 
 ```text
 Request / Query → inbound request models, both under <module>.request by default
-  Request       → operation input from an external interface
-  Query         → query conditions and filtering semantics
-
 DTO             → application-internal data transfer, default <module>.dto
-BO              → intermediate / composed business-processing semantics, default <module>.bo
+BO              → intermediate/composed business-processing semantics, default <module>.bo
 DO              → database persistence model, default <module>.domain
-VO              → concrete business interface / view output, default <module>.vo
+VO              → concrete business interface/view output, default <module>.vo
 ```
 
-`Request` and `Query` are two semantic names within the same inbound-request model group; they do not imply separate Packages. The default mapping is:
-
-```text
-Request ─┐
-         ├→ <module>.request
-Query   ─┘
-
-DTO     → <module>.dto
-BO      → <module>.bo
-DO      → <module>.domain
-VO      → <module>.vo
-```
-
-For example:
+`Request` and `Query` are semantically different class types but share the `request` Package by default:
 
 ```text
 module.place.request.PlaceSaveRequest
 module.place.request.PlaceAuditRequest
 module.place.request.PlaceQuery
-module.place.dto.PlaceDTO
-module.place.bo.PlaceAuditBO
-module.place.domain.PlaceDO
-module.place.vo.PlaceDetailVO
 ```
 
-Do not mechanically create:
+Do not create a separate `query` Package merely because the class suffix is `Query`.
 
-```text
-module.place.query
-```
+Physical placement of the business module containing these Packages belongs to [project-structure.md](project-structure.md).
 
-merely because the model type is named `Query`.
+### Request
 
-Model responsibility and the project's physical directory are still separate concerns:
+Operation-oriented external input. It must not contain trusted server-side identity or permission information that a client can spoof.
 
-```text
-business module location
-→ project-structure.md
+### Query
 
-model semantics and responsibility Package
-→ this document
-```
+Query conditions and filtering semantics. Prefer a Query object when ordinary query parameters become numerous or cohesive.
 
-If the target project already has a clear and stable Package structure, follow it rather than bulk-migrating historical code to this default.
+### DTO
 
----
+Use only for a real internal transfer contract that is not already adequately represented by Request, DO, VO, or another existing model.
 
-## 9.1 Request
+### BO
 
-Request represents operation-oriented interface input submitted by an external caller.
+Use for an intermediate or composed business-processing concept with independent meaning. Do not create a BO for every Service method.
 
-Examples:
+### DO
 
-```text
-PlaceSaveRequest
-PlaceAuditRequest
-```
+Database persistence model. It must not be exposed directly as a public API contract. A DO is not automatically a Clean Architecture Entity; see `business-rules.md`.
 
-Default Package:
+### VO
 
-```text
-<module>.request
-```
+Concrete business interface or view output. The unified outer HTTP response wrapper is governed by `api-design.md`, not classified as a VO.
 
-A Request should not carry server-side identity data that a client cannot provide trustworthily, such as the current Operator or tenant permission context.
+### Conversion
 
----
-
-## 9.2 Query
-
-Query represents query conditions and filtering semantics.
-
-Examples:
-
-```text
-PlaceQuery
-CaseQuery
-```
-
-Query remains semantically distinct from an ordinary Request, but by default lives with Request under:
-
-```text
-<module>.request
-```
-
-Use the `*Query` class name to express its query responsibility; do not create a separate `query` Package.
-
-When ordinary query conditions grow, prefer a Query object rather than an unbounded method parameter list or `Map<String, Object>`.
-
----
-
-## 9.3 DTO
-
-DTO is used for an explicit application-internal data-transfer boundary.
-
-Appropriate when:
-
-* a stable group of data is passed across layers;
-* an internal capability's input / output is not equivalent to Request, DO, or VO;
-* an operation forms a clear internal data contract.
-
-Do not use DTO merely because “we do not know what else to call it.”
-
----
-
-## 9.4 BO
-
-BO represents an intermediate result, calculation result, or composite object with independent meaning during business processing.
-
-Create one only when a real intermediate business semantic exists; do not create a BO for every Service method.
-
----
-
-## 9.5 DO
-
-DO represents the database persistence structure.
-
-DO fields use English Java business semantics. Map physical database names explicitly through the persistence layer, such as SQL column aliases or MyBatis ResultMap, so physical database naming does not leak into business models.
-
-A DO is not exposed directly through an external API.
-
----
-
-## 9.6 VO
-
-VO represents concrete business-interface or view output, for example:
-
-```text
-PlaceVO
-PlaceDetailVO
-PlaceStatsVO
-```
-
-The unified outer HTTP response wrapper is not a VO; its rules are maintained by `api-design.md`.
-
-Do not mechanically create another model layer merely to distinguish “business output” from “HTTP output” when the responsibilities are identical.
-
----
-
-## 9.7 Model Conversion
-
-Convert models only when responsibility, contract, or data semantics actually change.
-
-Avoid valueless chains such as:
+Convert models only when responsibility, contract, or data semantics actually change. Avoid ceremonial chains such as:
 
 ```text
 DO → DTO → BO → VO
 ```
 
-If a model layer has no independent responsibility, skip it.
-
-A simple one-off DO → VO field mapping does not require a Converter / Assembler. Extract a dedicated mapping capability only when mapping is complex, reused in several places, or contains real business transformation rules.
+A one-off simple mapping does not require a Converter / Assembler unless complexity, reuse, or semantic transformation justifies it.
 
 ---
 
-# 10. Cross-Module Calls
+## 11. Cross-Module Logical Calls
 
-Within the same application, cross-module calls should preferably go through the other module's stable Service / Facade capability.
+Within one application, cross-module collaboration should normally use the other module's stable Service / Facade capability rather than its Mapper, Client, or private Manager.
 
 Preferred:
 
@@ -787,32 +438,30 @@ CaseManageService
 PlaceMapper
 ```
 
-A module boundary should not be penetrated to reach the other module's Mapper, Client, or internal Manager merely because everything runs in the same JVM.
-
-Whether a Facade is necessary depends on a real module boundary and public calling surface; do not mechanically create one.
+A Facade is optional and should exist only when a real module-facing contract benefits from it.
 
 ---
 
-# 11. Responsibility Decision Flow
+## 12. Responsibility Decision Flow
 
-When adding or moving a class, decide in this order:
+When adding or moving a class:
 
 ```text
 What business / technical problem does it solve?
         ↓
-Is it inbound, a business use case, an application capability, database access, or external technical adaptation?
+Is it inbound, use-case orchestration, reusable application capability, database access, or external adaptation?
         ↓
-Does an implementation with the same responsibility already exist?
+Does an equivalent responsibility already exist?
         ↓
 Are dependencies one-way?
         ↓
-If it is a model, first decide whether it belongs to the Request / Query inbound-request group, or to DTO / BO / DO / VO
+If it is a model, is it Request / Query / DTO / BO / DO / VO?
         ↓
-Request / Query go to request by default; other models map to Packages by their own responsibility
+Which responsibility Package owns it?
         ↓
-Then use project-structure.md to determine the physical business-module location
+Use project-structure.md to determine the physical business-module location
 ```
 
 Final principle:
 
-> `project-structure.md` determines “which business module and physical directory this belongs to”; `layering.md` determines “what this class logically is and what it may depend on.” Request and Query share the `request` Package by default and are distinguished by class name. Responsibility comes before Package, and Package comes before file creation.
+> `layering.md` owns logical responsibilities, dependency direction, model classification, and responsibility Packages. `project-structure.md` owns physical module layout. `business-rules.md` owns core-rule versus use-case-rule placement. Keep those decisions distinct.

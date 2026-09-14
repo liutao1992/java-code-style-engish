@@ -1,6 +1,6 @@
 interface:
   display_name: "Backend Code Review"
-  short_description: "Review Java/Spring/MyBatis/Rabbit-SQL/PostgreSQL changes using team standards and report evidence-backed correctness, architecture, security, transaction, and maintainability issues"
-  default_prompt: "Use $backend-code-review to review the current backend changes. Confirm the real scope, identify the actual persistence framework, load only relevant team references, trace the changed data/control flow, and report evidence-backed findings by severity. Do not duplicate the verification pipeline; use $review-and-test for executable checks."
+  short_description: "Review Java/Spring/MyBatis/Rabbit-SQL/PostgreSQL changes using centralized team standards and report evidence-backed issues"
+  default_prompt: "Use $backend-code-review to review the current backend changes. Confirm the real scope, use java-spring-backend/references/routing.md to load only relevant standards, identify the actual frameworks, trace changed data/control flow, and report evidence-backed findings by severity. Do not duplicate the executable verification pipeline; use $review-and-test for current checks."
 policy:
   allow_implicit_invocation: true

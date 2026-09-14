@@ -1,6 +1,6 @@
 interface:
   display_name: "Review and Test"
-  short_description: "Validate completed changes with targeted tests, broader project checks, test-quality review, edge-case reasoning, and explicit PASS/FAIL/NOT RUN reporting"
-  default_prompt: "Use $review-and-test to validate the current completed changes. Determine changed behavior, discover repository-defined verification commands, assess relevant tests and gaps, run targeted checks first, expand to broader checks when appropriate, investigate failures, and report PASS/FAIL/NOT RUN plus residual risks honestly."
+  short_description: "Execute repository-defined verification for completed changes and report PASS/FAIL/NOT RUN while using the centralized testing standard"
+  default_prompt: "Use $review-and-test to validate the completed changes. Determine changed behavior, discover repository-defined checks, load java-spring-backend/references/coding/testing.md for test-quality and scenario guidance, run targeted checks first, expand to broader checks when appropriate, investigate failures, and report PASS/FAIL/NOT RUN plus residual risks honestly."
 policy:
   allow_implicit_invocation: true

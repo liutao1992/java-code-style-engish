@@ -1,6 +1,6 @@
 ---
 name: backend-code-review
-description: Review Java, Spring Boot, MyBatis, MyBatis-Plus, Rabbit-SQL, and PostgreSQL backend changes for correctness, business rules, layering, SOLID, APIs, databases, transactions, concurrency, security, and maintainability. Load team standards on demand and report only evidence-backed findings. Pure review is read-only by default. Verification execution belongs to review-and-test.
+description: Review Java, Spring Boot, MyBatis, MyBatis-Plus, Rabbit-SQL, and PostgreSQL backend changes for correctness, business rules, layering, SOLID, APIs, databases, transactions, concurrency, security, and maintainability. Report only evidence-backed findings. Pure review is read-only by default. Executable verification belongs to review-and-test.
 ---
 
 # Backend Code Review
@@ -12,15 +12,14 @@ This Skill owns:
 ```text
 review scope
 review workflow
-standards routing
 evidence requirements
-severity
+finding severity
 review output
 ```
 
-It does **not** own the executable verification pipeline. Running and reporting tests, type checks, lint/static analysis, and builds belongs to the sibling `review-and-test` Skill.
+It does **not** own the executable verification pipeline. Running tests, compilation, lint/static analysis, architecture checks, and builds belongs to the sibling `review-and-test` Skill.
 
-Detailed Java, business-rule, layering, API, Spring, MyBatis, Rabbit-SQL, SQL, database, transaction, concurrency, and testing knowledge remains centralized under `java-spring-backend/references`. Load only the references needed for the current change; do not duplicate those standards here.
+Detailed backend standards remain centralized under `../java-spring-backend/references`. Use [routing.md](../java-spring-backend/references/routing.md) as the single routing index rather than maintaining another domain routing table here.
 
 ---
 
@@ -29,9 +28,9 @@ Detailed Java, business-rule, layering, API, Spring, MyBatis, Rabbit-SQL, SQL, d
 - Read the applicable `AGENTS.md` in the target project first.
 - Pure review is read-only by default. Do not automatically fix, format, rename, install dependencies, update snapshots, publish comments, or rewrite Git history.
 - When invoked as self-review inside an already-authorized development task, permission to fix comes from that original task and remains limited to its scope.
-- Keep this Skill as a sibling of `java-spring-backend`; read its references directly rather than executing the development Skill's implementation workflow.
-- Use existing tests and verification results as evidence when available, but do not own or duplicate the full verification run. Use `review-and-test` for that stage.
-- If required references are missing, state that standards verification is limited.
+- Read detailed standards directly from `../java-spring-backend/references`; do not execute the development Skill's implementation workflow.
+- Existing tests and prior verification results may be used as evidence when available, but executable verification itself belongs to `review-and-test`.
+- If required project context or standards are unavailable, state the evidence gap instead of guessing.
 
 ---
 
@@ -58,13 +57,13 @@ staged
 relevant untracked files
 ```
 
-Inspect workspace status first, then read staged and unstaged diffs separately. Do not run only one `git diff` and assume the scope is complete.
+Inspect workspace status first, then staged and unstaged diffs separately. Do not run only one `git diff` and assume the scope is complete.
 
 When no scope is specified:
 
 - do not review the entire repository by default;
 - do not invent a remote baseline;
-- do not mix unrelated historical issues into current findings.
+- do not mix unrelated historical debt into current findings.
 
 If a comparison baseline cannot be determined, state exactly what was reviewed.
 
@@ -72,59 +71,49 @@ If a comparison baseline cannot be determined, state exactly what was reviewed.
 
 ## 3. Review Workflow
 
-1. **Confirm scope.** Record the actual files / commits / workspace state being reviewed.
+1. **Confirm scope.** Record the actual files, commits, or workspace state being reviewed.
 2. **Read the complete change.** Inspect affected methods, callers, models, SQL, configuration, and nearby contracts rather than isolated patch lines.
-3. **Build project context.** Search for similar implementations, stable project conventions, central abstractions, and relevant recent history.
-4. **Select standards.** Load only the references required by the routing table. Identify the actual persistence framework before applying persistence rules.
-5. **Trace data and control flow.** Follow input through layers to persistence / external calls / output and identify changed invariants or contracts.
-6. **Separate introduced problems from existing debt.** Prioritize defects introduced or materially worsened by the current change.
-7. **Use evidence, not speculation.** Existing tests and prior validation may support a finding, but executable verification itself belongs to `review-and-test`.
-8. **Form the result.** Merge duplicate root causes, order by impact, and state any evidence gaps.
+3. **Build project context.** Search similar implementations, stable project conventions, central abstractions, relevant tests, and recent history when available.
+4. **Select standards.** Use [routing.md](../java-spring-backend/references/routing.md) to load only the references required by the current change. Confirm the actual framework before applying framework-specific rules.
+5. **Trace data and control flow.** Follow input through logical boundaries to persistence or external calls and back to output. Identify changed invariants and contracts.
+6. **Separate introduced problems from existing debt.** Prioritize defects introduced or materially worsened by the reviewed change.
+7. **Use evidence, not speculation.** A finding must have a concrete trigger, broken contract, incorrect dependency, or applicable rule with supporting project context.
+8. **Form the result.** Merge duplicate root causes, order findings by impact, and state necessary evidence gaps.
 
 ---
 
-## 4. Standards Routing
+## 4. Standards Selection
 
-| Area involved | Load | Primary checks |
-| --- | --- | --- |
-| Java implementation | [Java](../java-spring-backend/references/coding/java.md) | naming, class design, constants, Enum, magic values, POJO defaults, parameters, Null, collections, exceptions, logging |
-| Physical project directory / module | [Project structure](../java-spring-backend/references/architecture/project-structure.md) | business-module location, common directories, physical organization |
-| Layering / models / responsibility / SOLID | [Layering](../java-spring-backend/references/architecture/layering.md) | responsibilities, dependencies, model boundaries, cross-module calls, overdesign |
-| Business rules / Use Case / Entity concepts | [Business rules](../java-spring-backend/references/architecture/business-rules.md) | invariants, application flows, behavioral objects, persistence boundaries |
-| Spring Framework | [Spring](../java-spring-backend/references/coding/spring.md) | MVC, Validation, DI, Bean, Proxy, Advice |
-| HTTP API | [API](../java-spring-backend/references/api/api-design.md) | URL, Method, Request/VO, response, errors, compatibility, pagination, idempotency |
-| Exceptions across layers | [Error handling](../java-spring-backend/references/architecture/error-handling.md) | translation, cause, logging ownership, external leakage |
-| MyBatis / MyBatis-Plus | [MyBatis / MyBatis-Plus](../java-spring-backend/references/coding/mybatis.md) | Mapper/DAO, BaseMapper, Wrapper, XML, binding, ResultMap, TypeHandler, collection contracts |
-| Rabbit-SQL | [Rabbit-SQL](../java-spring-backend/references/coding/rabbit-sql.md) | `@XQLMapper`, Baki, XQL mapping, binding, `${}`, pagination, Stream, Batch, Spring transactions |
-| SQL | [SQL](../java-spring-backend/references/database/sql.md) | correctness, scope, injection, safety, PostgreSQL, performance evidence |
-| Database schema | [Database design](../java-spring-backend/references/database/database-design.md) | types, Null, constraints, indexes, Migration, compatibility |
-| Transactions / locks / consistency | [Transactions](../java-spring-backend/references/architecture/transactions.md) | necessity, scope, rollback, propagation, isolation, races |
-| Concurrency / async | [Concurrency](../java-spring-backend/references/architecture/concurrency.md) | thread pools, context, exceptions, shared state, resource capacity |
-| Test code encountered during review | [Testing](../java-spring-backend/references/coding/testing.md) | whether a test itself is misleading or encodes incorrect behavior; full coverage/verification assessment belongs to `review-and-test` |
-| Permissions / tenant / data scope / security | target project's existing security standards and implementation | authorization bypass, isolation, data leakage, credential safety |
+Do not maintain a second routing matrix in this Skill. Use:
 
-Load only the necessary union for multi-domain changes.
+- [Backend Standards Routing Index](../java-spring-backend/references/routing.md)
 
 Examples:
 
 ```text
-Controller URL change
+Controller HTTP-contract change
 → API + necessary Spring
 
-New VO / Request / Query package
+New VO / Request / Query placement
 → Layering + Java
+
+Repeated invariant or questionable domain-object extraction
+→ Business rules + Layering + Java
 
 MyBatis-Plus Wrapper / Mapper XML
 → MyBatis + SQL when SQL semantics change
 
 @XQLMapper / Baki / .xql
-→ Rabbit-SQL + SQL when actual SQL changes
+→ Rabbit-SQL + SQL when SQL semantics change
 
-TransactionTemplate / @Transactional semantics
+TransactionTemplate / @Transactional behavior
 → Transactions + necessary Spring
 
 CompletableFuture with database work
 → Concurrency + Transactions
+
+Test code itself appears incorrect or misleading
+→ Testing; executable coverage and command execution still belong to review-and-test
 ```
 
 ---
@@ -156,11 +145,11 @@ If a key premise cannot be established, mark it as `needs confirmation` rather t
 
 ## 6. Project Contracts Take Priority
 
-Before creating a standards-based finding, inspect the target project's established contracts for:
+Before creating a standards-based finding, inspect the target project's established contracts for the affected area, such as:
 
 ```text
 API / serialization
-model and package conventions
+model and Package conventions
 module structure
 persistence framework
 Spring MVC / validation
@@ -169,6 +158,7 @@ collection Null behavior
 transaction / rollback
 pagination
 database naming / migration
+security / tenant / data scope
 ```
 
 Do not demand migration of stable historical code merely because this Skill Pack's default differs.
@@ -179,7 +169,7 @@ Do not demand migration of stable historical code merely because this Skill Pack
 
 ### Duplicate validation
 
-Report duplicate structural validation only after confirming that the same semantic constraint is already guaranteed by a trusted inbound boundary and that no other unvalidated entry path requires the lower-layer check.
+Report duplicate structural validation only after confirming that the same semantic constraint is already guaranteed by a trusted inbound boundary and no other unvalidated entry path requires the lower-layer check.
 
 ### Collection Null defenses
 
@@ -199,7 +189,7 @@ Do not report a transaction issue merely because a write exists, two Mappers app
 
 ### Persistence framework
 
-`Mapper` / `DAO` naming does not prove MyBatis. Confirm dependencies, imports, annotations, XML/XQL resources, `BaseMapper`, `@XQLMapper`, Baki, or framework APIs before applying rules.
+`Mapper` / `DAO` naming does not prove MyBatis. Confirm dependencies, imports, annotations, XML/XQL resources, `BaseMapper`, `@XQLMapper`, Baki, or framework APIs before applying framework-specific rules.
 
 ### Clean Architecture / anemic models
 
@@ -239,7 +229,7 @@ Location: file:line or smallest useful range
 Problem: what is specifically wrong
 Trigger: input / call path / state that exposes it
 Impact: user / data / contract consequence
-Evidence: project contract, code path, existing test/result, or applicable reference
+Evidence: project contract, code path, existing result, or applicable reference
 Recommendation: minimal corrective direction
 ```
 
@@ -266,8 +256,8 @@ When there are no findings, state:
 
 > No defects with sufficient supporting evidence were found within the actual review scope.
 
-Do not claim tests, lint, builds, or other verification passed unless those results were already available and explicitly inspected. For executable verification, use `review-and-test`.
+Do not claim tests, lint, builds, or other executable verification passed unless those results already exist and were explicitly inspected. For a current verification run, use `review-and-test`.
 
 Final principle:
 
-> The review Skill must prove why something is a problem; domain references define the detailed rule; `review-and-test` proves the completed change with executable checks.
+> This Skill proves why a completed implementation is or is not correct; references define the detailed standards; `review-and-test` independently verifies behavior with executable checks.

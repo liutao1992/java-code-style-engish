@@ -1,14 +1,15 @@
 # Project and Business-Module Structure Standard
 
-This document defines the physical directory structure, business-module organization, and internal Package structure of Java backend projects.
+This document defines the **physical project structure**, business-module organization, and where responsibility Packages are located.
 
 It answers:
 
-> Where should a new module live, by what dimension should business code be organized, and what should directories such as `module` / `common` contain?
+> Where should a business module live, how should code be grouped physically, and when should shared directories such as `common` exist?
 
-For logical class responsibilities, dependency direction, model classification, and concrete Package semantics, read:
+It does **not** define the semantics of Controller / Service / Manager / Mapper / Client, model classification, dependency direction, or business-rule placement. Those belong to:
 
 - [Application layering and model boundaries](layering.md)
+- [Business rules and use-case boundaries](business-rules.md)
 
 For Java implementation details, read:
 
@@ -16,13 +17,13 @@ For Java implementation details, read:
 
 Core principle:
 
-> Organize code by business capability first, then layer by responsibility inside each business module. Directory structure exists to improve discoverability, boundaries, and collaboration. Do not create empty Packages for formality, and do not migrate an existing stable project structure without authorization.
+> Organize code by business capability first, then place responsibility Packages inside that business module. Physical structure should make ownership visible without redefining logical responsibilities.
 
 ---
 
 ## 1. The Target Project Structure Takes Priority
 
-This standard provides a default organization when a new project or new module lacks an explicit convention.
+This standard provides defaults only when a new project or business area lacks a clear convention.
 
 If the target project already has a stable structure such as:
 
@@ -33,14 +34,14 @@ business/<module>
 <module>/controller
 ```
 
-continue using it. Do not bulk-migrate historical code merely to introduce a `module` directory.
+continue using it. Do not bulk-migrate historical code merely to introduce a preferred directory name.
 
 Evaluate structural changes only when:
 
-* the current task explicitly requires modular refactoring;
-* a new module has not yet been implemented and the project has no unified convention;
-* the existing structure already creates clear responsibility confusion or dependency problems;
-* the scope and compatibility impact can be controlled.
+- the current task explicitly requires modular restructuring;
+- a new module has no established project convention;
+- the current structure causes concrete ownership or dependency confusion;
+- the compatibility and migration impact are controlled.
 
 Principle:
 
@@ -50,9 +51,7 @@ Principle:
 
 ## 2. Prefer Business-First Organization for New Projects
 
-When the target project has no existing convention, prefer business-first modular organization.
-
-Example:
+When no stable convention exists, prefer business-first organization:
 
 ```text
 src/main/java/com/example/app/
@@ -65,7 +64,7 @@ src/main/java/com/example/app/
 └── Application.java
 ```
 
-Resources continue to follow Maven / Gradle and the project's existing layout, for example:
+Resources continue to follow the build tool and project convention, for example:
 
 ```text
 src/main/resources/
@@ -73,15 +72,15 @@ src/test/java/
 src/test/resources/
 ```
 
-`module` expresses an internal business-organization boundary. It does not imply that the module will later become a microservice, and it must not be used as a reason to introduce remote-call abstractions for speculative future decomposition.
+`module` is only an organizational boundary. It does not imply future microservices and must not be used to justify speculative remote-call abstractions.
 
-If the project already uses another clear business directory name, continue using it. Do not force-renaming to `module`.
+If the project already uses another clear business directory name, keep it.
 
 ---
 
 ## 3. Prefer Business-First to Technology-First Organization
 
-When a new project or new business area lacks an existing convention, prefer:
+When a new project or business area lacks an existing convention, prefer:
 
 ```text
 module.place.controller
@@ -93,7 +92,7 @@ module.casecenter.service
 module.casecenter.mapper
 ```
 
-rather than first creating global technical directories and scattering every business across them:
+rather than scattering each business across global technical directories:
 
 ```text
 controller.place
@@ -104,49 +103,36 @@ mapper.place
 mapper.casecenter
 ```
 
-Business-first organization helps:
+Business-first organization improves discoverability, ownership, and module cohesion.
 
-* locate a business's complete implementation quickly;
-* make module boundaries and cross-module dependencies visible;
-* control growth of common code;
-* keep related Controllers, Services, Mappers, models, and tests close together.
-
-However, if the target project already stably uses a technology-first layout, do not migrate it without authorization.
+If the target project already stably uses a technology-first layout, do not migrate it without authorization.
 
 ---
 
-## 4. Organize a `module` by Real Responsibilities
+## 4. Create Only Responsibility Packages That Actually Exist
 
-A business module may contain only the responsibilities it actually needs:
+A business module may physically contain responsibility Packages such as:
 
 ```text
 module/place/
-├── controller/             HTTP inbound adapters
-├── service/                business use cases and flows
-├── manager/                optional: reusable application capabilities / atomic compositions
-├── mapper/                 database access
-├── client/                 optional: external technical calls
-├── adapter/                optional: external protocol adaptation
-├── request/                API input: Request / Query
-├── dto/                    optional: internal data transfer
-├── bo/                     optional: intermediate business objects
-├── domain/                 persistence DO
-└── vo/                     concrete business output
+├── controller/
+├── service/
+├── manager/
+├── mapper/
+├── client/
+├── adapter/
+├── request/
+├── dto/
+├── bo/
+├── domain/
+└── vo/
 ```
 
-`Request` and `Query` have different model semantics but share the `request` Package by default:
+This is a location map, not a semantic definition and not a required directory template.
 
-```text
-module.place.request.PlaceSaveRequest
-module.place.request.PlaceAuditRequest
-module.place.request.PlaceQuery
-```
+The detailed meaning and default Package placement of Request / Query / DTO / BO / DO / VO and the responsibilities of Controller / Service / Manager / Mapper / Client are defined only by [layering.md](layering.md).
 
-Express the input type through `*Request` / `*Query` class names. Do not mechanically create a separate `query` Package merely to mirror the model classification.
-
-This is a responsibility map, not a requirement that every module contain every directory.
-
-A simple module may contain only:
+A simple module may contain only the directories it actually needs, for example:
 
 ```text
 place/
@@ -158,30 +144,22 @@ place/
 └── vo/
 ```
 
-Add these only when the responsibility genuinely exists:
+Do not pre-create empty Packages or placeholder classes for architectural completeness.
 
-```text
-manager
-dto
-bo
-client
-adapter
-```
+Principle:
 
-Do not pre-create large numbers of empty Packages or placeholder classes merely for "directory completeness."
-
-The single detailed source of truth for model responsibilities is `layering.md`. Request and Query share `request` by default but remain semantically distinct through their class names. DTO, BO, DO, and VO continue to live according to their real responsibilities and must not be mechanically stuffed into generic `domain` or `dto` directories.
+> `project-structure.md` decides where a responsibility Package lives; `layering.md` decides what that responsibility means.
 
 ---
 
 ## 5. `common` Is Not a Shared Trash Bin
 
-`common` contains only capabilities that genuinely satisfy all of the following:
+`common` contains only capabilities that are:
 
-* unrelated to any specific business module;
-* have clear cross-module reuse value;
-* have stable semantics;
-* do not depend on the internal implementation of a business module.
+- unrelated to one specific business module;
+- genuinely reused across multiple modules;
+- semantically stable;
+- independent of one module's private implementation.
 
 Suitable examples may include:
 
@@ -193,8 +171,6 @@ common.validation
 common.web
 ```
 
-Concrete names still follow the target project's conventions.
-
 Do not move business code into:
 
 ```text
@@ -203,19 +179,19 @@ util
 shared
 ```
 
-merely because "multiple places can call it."
+merely because multiple callers use it.
 
-For example, a Place audit rule remains a Place business capability even when reused by multiple entry points. It should not become `common.util.PlaceAuditUtils`.
+A Place audit rule remains Place business logic even if several entry points need it.
 
 Principle:
 
-> Extract common code according to stable cross-module responsibility, not merely because it looks reusable.
+> Extract shared code by stable cross-module responsibility, not by apparent reuse alone.
 
 ---
 
-## 6. Do Not Mechanically Create Global `constant` / `util` / `handler` / `third`
+## 6. Do Not Mechanically Create Global Catch-All Directories
 
-The project root is not required to contain:
+The project root does not automatically need:
 
 ```text
 constant
@@ -226,9 +202,9 @@ listener
 third
 ```
 
-Such directories must be justified by real responsibilities.
+Each shared directory must represent a real responsibility.
 
-For example:
+Examples:
 
 ```text
 MyBatis TypeHandler
@@ -238,7 +214,7 @@ Web Interceptor
 → common.web.interceptor or the project's existing Web infrastructure Package
 
 Place business constants
-→ a location inside the Place module that owns those business semantics
+→ remain inside the Place module that owns their semantics
 ```
 
 Avoid indefinitely growing catch-all types such as:
@@ -253,16 +229,16 @@ A directory name is not a substitute for responsibility design.
 
 ---
 
-## 7. Own Third-Party Integrations by Boundary, Not by a Universal `third` Package
+## 7. Place Third-Party Integrations by Ownership
 
-External capabilities dedicated to one module should normally follow that business module, for example:
+An external capability dedicated to one business module should normally remain physically inside that module, for example:
 
 ```text
 module.place.client.FaceRecognitionClient
 module.place.adapter.FaceRecognitionAdapter
 ```
 
-Genuinely shared external infrastructure may live under a stable common boundary according to the project's conventions, for example:
+A genuinely shared integration capability may live under a stable shared technical boundary according to project convention, for example:
 
 ```text
 common.storage
@@ -270,122 +246,61 @@ common.integration
 common.client
 ```
 
-Do not put every SDK, HTTP Client, Redis integration, OSS integration, or messaging integration into one giant `third` Package merely because the dependency comes from a third party.
+Do not create one universal `third` Package merely because dependencies come from external vendors.
 
-For the difference between technical adapters and Manager responsibilities, read:
-
-- [layering.md](layering.md#5-manager-layer)
-
-Principle:
-
-> Own an external dependency according to who owns the technical capability and whether it is reused across modules, not simply according to whether it is third-party.
+The semantic difference between Client / Adapter / Manager belongs to [layering.md](layering.md).
 
 ---
 
-## 8. Keep MVC / Application Layering Unidirectional Inside a Module
+## 8. Physical Structure Must Preserve Logical Boundaries
 
-Business-module directories still obey logical layering:
+Directory organization does not redefine or override logical dependency rules.
 
-```text
-Controller / other inbound adapters
-        ↓
-      Service
-        ↓
-    Manager (when needed)
-      ↙       ↘
-   Mapper    Client / Adapter
-```
+For Controller / Service / Manager / Mapper / Client dependencies, cross-module calling rules, and responsibility boundaries, use [layering.md](layering.md).
 
-Directory structure is not a reason to bypass dependency rules.
-
-Even when everything lives under:
-
-```text
-module.place
-```
-
-these are still forbidden:
-
-```text
-Controller → Mapper
-Mapper → Service
-Client → Service
-```
-
-Read detailed responsibilities in:
-
-- [layering.md](layering.md)
+A physical move is valid only when the resulting location still matches the class's logical responsibility.
 
 ---
 
-## 9. Cross-Module Calls Must Not Pierce the Data-Access Layer
+## 9. Decision Flow Before Creating a Module or Package
 
-Business modules should normally collaborate through the other module's stable Service / Facade capability.
-
-Recommended:
+Decide in this order:
 
 ```text
-module.casecenter.CaseService
+Does the target project already have an equivalent structure?
         ↓
-module.place.PlaceService / PlaceFacade
+Which business module owns the capability?
+        ↓
+What logical responsibility does the class have?  ← layering.md
+        ↓
+Does an implementation already exist?
+        ↓
+Which responsibility Package owns it?            ← layering.md
+        ↓
+Where is that Package physically located?         ← this document
+        ↓
+Is a new directory or class actually necessary?
 ```
 
-Avoid:
-
-```text
-CaseService
-    ↓
-PlaceMapper
-```
-
-One purpose of the `module` directory is to make cross-module dependencies easier to identify, not to let any code reach into another module's internals merely because everything runs in the same JVM.
+Do not reverse the process by creating a directory template first and then looking for classes to fill it.
 
 ---
 
-## 10. Decision Flow Before Creating a Module / Package
+## 10. Directory-Structure Checklist
 
-Before adding a directory or class, decide in order:
+When adding modules, Packages, or broad physical moves, check:
 
-```text
-Does the current project already have an equivalent structure?
-        ↓
-Which business module owns it?
-        ↓
-What responsibility does this class have?
-        ↓
-Does an implementation of that responsibility already exist?
-        ↓
-Which Package should own it?
-        ↓
-Is a new directory / class actually necessary?
-```
-
-Do not reverse the process:
-
-```text
-create controller/service/manager/mapper directories first
-        ↓
-then look for classes to put in them
-```
-
----
-
-## 11. Codex Directory-Structure Checklist
-
-When adding a new module, adding new Packages, or moving code broadly, check:
-
-1. Whether the target project's existing directories and similar business modules were inspected first.
-2. Whether an existing project was forced into a `module` layout without authorization.
-3. Whether new business code remains cohesive instead of being scattered across global technical directories.
-4. Whether only genuinely needed responsibility Packages were created inside a `module`.
-5. Whether Query was mechanically split into a separate `query` Package merely because of its model semantics; by default it belongs in `request` together with Request.
-6. Whether all models were mechanically placed into `domain` / `dto`.
-7. Whether `common` contains specific business semantics or has become a common trash bin.
-8. Whether giant fallback directories such as `util`, `constant`, or `third` were created without justification.
-9. Whether third-party integrations live at the correct Client / Adapter or shared technical boundary.
-10. Whether cross-module calls reach through to another module's Mapper.
-11. Whether Package choice follows the class's real responsibility rather than current file location or call convenience.
+1. The target project's existing structure and similar modules were inspected first.
+2. An existing project was not forced into a new top-level layout without authorization.
+3. New business code remains cohesive rather than scattered across global technical directories.
+4. Only responsibility Packages that actually exist were created.
+5. Model semantics and Package responsibility were taken from `layering.md`, not reinvented here.
+6. `common` contains genuinely shared capabilities rather than business-specific code.
+7. Catch-all directories such as `util`, `constant`, or `third` were not created without a stable responsibility.
+8. Third-party integrations are physically owned by the correct module or shared technical boundary.
+9. Package choice follows the class's logical responsibility rather than file proximity or call convenience.
+10. A structural change does not silently become a broad architectural migration.
 
 Final principle:
 
-> Business modules provide business cohesion; responsibility Packages express boundaries. Request and Query share the `request` Package by default and are distinguished by class names. `common` contains only genuinely shared capabilities. Clear structure matters more than having many directories.
+> Business modules provide physical cohesion. Logical responsibilities and model semantics come from `layering.md`; business-rule placement comes from `business-rules.md`. Keep those concerns separate.

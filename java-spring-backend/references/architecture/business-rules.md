@@ -1,27 +1,29 @@
 # Business Rules and Use-Case Boundaries
 
-This document borrows the distinction of Business Rules from *Clean Architecture* and applies it to the Spring Boot layering model used by this Skill Pack.
+This document defines how to distinguish **stable core business rules** from **application-specific use-case rules**, and when business behavior should be encapsulated in a behavioral business object instead of remaining in Service / Manager orchestration.
 
-This document answers:
+It answers:
 
-> Should a business rule belong to stable core business rules or to a specific application use-case flow? When is it worth encapsulating a rule in a behavioral business object, and when should Service / Manager continue to orchestrate it? Do input and output models really need another isolation layer?
+> What kind of business rule is this, where should the rule live conceptually, and does introducing a behavioral domain object or extra application model create real value?
+
+It does **not** redefine Controller / Service / Manager / Mapper / Client responsibilities or model Package placement; use [layering.md](layering.md) for those. It does not define physical project directories; use [project-structure.md](project-structure.md).
 
 Related references:
 
-- [Application Layering and Model Boundaries](layering.md)
-- [Project and Business Module Structure](project-structure.md)
-- [Java Coding](../coding/java.md)
+- [Application layering and model boundaries](layering.md)
+- [Project and business-module structure](project-structure.md)
+- [Java coding](../coding/java.md)
 - [Transactions](transactions.md)
 
 Core principles:
 
-> Business logic itself has layers. The less a rule depends on HTTP, databases, frameworks, and specific entry points—and the more stable it remains across use cases—the closer it is to a core business rule. Application-specific flows organize these rules together with external capabilities.
+> The less a rule depends on HTTP, databases, frameworks, and one specific entry point—and the more stable it remains across use cases—the closer it is to a core business rule.
 
-> Borrow the responsibility analysis, not a directory template. Do not mechanically create `Entity`, `UseCase`, `Repository`, `Command`, `Result`, or additional conversion layers merely to imitate Clean Architecture.
+> Borrow responsibility concepts from Clean Architecture, not a mandatory directory template. Do not mechanically create `Entity`, `UseCase`, `Repository`, `Command`, `Result`, or conversion layers.
 
 ---
 
-## 1. First Distinguish Two Kinds of Business Rules
+## 1. Distinguish Core Business Rules from Application Use-Case Rules
 
 ### 1.1 Core business rules
 
@@ -34,7 +36,7 @@ MyBatis → Rabbit-SQL
 PostgreSQL → another persistence mechanism
 ```
 
-and the rule still holds, it is usually closer to the business itself.
+and the rule still holds, it is usually close to the business itself.
 
 Examples:
 
@@ -42,98 +44,67 @@ Examples:
 Only cases pending storage may be stored.
 An archived case cannot be stored again.
 A cabinet slot with no remaining capacity cannot accept another item.
-Loan interest is calculated using a defined business formula.
+Loan interest follows a defined business formula.
 ```
 
-These rules are usually tightly related to the state, invariants, calculations, or allowed behavior of a business concept.
+These rules are usually state invariants, calculations, transitions, or behavior constraints of a business concept.
 
 ### 1.2 Application use-case rules
 
-If a rule describes:
-
-```text
-what the current system must do to complete a user goal,
-in what order data is read,
-which business capabilities are invoked,
-which records are written,
-which notifications are sent,
-and what result is returned,
-```
-
-it is closer to an application use-case flow.
-
-For example, “store a case” may require:
+A rule is closer to an application use case when it describes how the current system coordinates work to achieve a user goal, for example:
 
 ```text
 load case
 → load cabinet slot
-→ check current slot
-→ apply the case-storage rule
+→ check current state
+→ apply the storage rule
 → occupy the slot
-→ create a storage record
+→ create the storage record
 → persist changes
 → return the result
 ```
 
 Principle:
 
-> A core business rule answers “what must this business concept always obey?” An application use case answers “what steps must this application coordinate to achieve this business goal?”
+> A core business rule answers “what must this business concept always obey?” A use-case rule answers “what must this application coordinate to achieve this goal?”
 
 ---
 
-## 2. In This Skill Pack, Service Is the Default Use-Case Boundary
+## 2. Service Is the Default Use-Case Boundary
 
-This Skill Pack does not require separate `*UseCase` classes.
+This Skill Pack does not require separate `*UseCase` classes. By default, Service is the application use-case boundary.
 
-The default structure may remain:
+Detailed Service responsibilities, dependencies, naming, and Package placement are defined in [layering.md](layering.md). This document only decides whether a rule belongs to application orchestration or to a more stable business abstraction.
 
-```text
-Controller / other inbound adapter
-        ↓
-      Service
-        ↓
-Manager / Mapper / Client
-```
-
-The Service itself acts as the application use-case boundary:
-
-```text
-Service
-→ expresses the current business goal
-→ performs business validation
-→ coordinates core business rules
-→ coordinates Mapper / Client / Manager
-→ determines the consistency scope for the current use case
-```
-
-Only consider dedicated types such as:
+Consider dedicated types such as:
 
 ```text
 StoreCaseUseCase
 ApproveCaseUseCase
 ```
 
-when the target project already uses a Use Case / Application Service style, or when a single use case has become a stable responsibility that can be independently named, changed, and tested.
+only when the target project already uses that style or when a use case has become an independently nameable and independently changing responsibility.
 
-Do not merely transform:
+Do not merely rename:
 
 ```text
 PlaceService.store(...)
-↓ rename
-StorePlaceUseCase.execute(...)
+→ StorePlaceUseCase.execute(...)
 ```
 
-when the responsibility and dependencies are otherwise unchanged.
+when no responsibility boundary actually changes.
 
 Principle:
 
-> In this Skill Pack, `Use Case` is first a responsibility, not a required class name.
+> `Use Case` is first a responsibility, not a required class name.
 
 ---
 
-## 3. Stable Invariants May Be Encapsulated in Behavioral Business Objects
+## 3. Stable Invariants May Belong in Behavioral Business Objects
 
-If the same stable business rule is strongly tied to an object's state and must hold across multiple use cases, consider encapsulating it as behavior instead of repeating caller-side logic such as:
+When the same stable business rule is strongly tied to an object's state and must hold across multiple use cases, consider encapsulating it as behavior instead of repeating caller-side field manipulation.
+
+Repeated caller-side logic such as:
 
 ```java
 if (caseInfo.getStatus() != CaseStatus.PENDING_STORAGE) {
@@ -143,56 +114,54 @@ caseInfo.setCabinetId(cabinetId);
 caseInfo.setStatus(CaseStatus.STORED);
 ```
 
-If the project already has a separate behavioral business model, a clearer expression might be:
+may justify a behavioral expression such as:
 
 ```java
 caseInfo.store(cabinetId);
 ```
 
-Typical rules worth encapsulating include:
+when the target project has a meaningful independent business model and the invariant is real and stable.
+
+Typical candidates include:
 
 ```text
 state transitions
 object invariants
 stable business calculations
-behavior constraints that must hold regardless of entry point
+behavior constraints that apply across entry points
 ```
 
-Do this only when it provides real value.
+Do not introduce a new behavioral model merely because “rich domain models are better” when:
 
-Do not create a new business object merely because “rich domain models are better” when:
-
-* the feature is simple CRUD;
-* the rule appears only in one small use case;
-* the new object would create extensive meaningless DO ↔ Domain conversion;
-* the target project has no separate domain model and the existing structure is already clear;
-* the proposed “behavior” is only a wrapper around getters / setters;
-* the invariant cannot be confirmed from requirements, tests, or stable existing code.
+- the feature is simple CRUD;
+- the rule occurs only in one small use case;
+- the new object creates valueless DO ↔ Domain conversion;
+- the target project has no separate domain model and existing responsibilities are clear;
+- the proposed behavior only wraps getters/setters;
+- the invariant cannot be confirmed from requirements, tests, or stable code.
 
 Principle:
 
-> Eliminate real duplication and bypassable invariants. Do not create another model layer merely to “eliminate anemic models.”
+> Encapsulate stable meaning and anti-bypass invariants, not architecture fashion.
 
-### 3.1 Shared Domain Semantics May Be Extracted into a Base Class
+---
 
-When multiple domain or behavioral business objects repeatedly carry the same properties, those properties may be extracted into a base class when they represent one stable shared domain concept.
+## 4. Shared Domain Semantics May Be Extracted into a Base Class
 
-A base class is appropriate when the subclasses have a real `is-a` relationship and the inherited state has the same business meaning, invariants, and lifecycle across those subclasses.
+When multiple **behavioral domain objects** repeatedly carry the same properties, a base class may be appropriate only when those properties express one stable shared domain abstraction.
 
-For example, if several concrete business objects are all kinds of the same business concept and consistently share identity and behavior, a domain base type may express that common meaning instead of duplicating it in every subtype.
-
-Do not introduce inheritance merely because several classes happen to contain fields with the same names. Before extracting a base class, confirm:
+Before extracting inheritance, confirm:
 
 ```text
 Do the subclasses represent specializations of the same business concept?
-Do the shared properties have the same meaning and lifecycle in every subtype?
-Would a rule or invariant defined on the base type be valid for every subtype?
-Can callers safely reason about the subtype through the base-type contract?
+Do the shared properties have the same business meaning and lifecycle?
+Would invariants on the base type be valid for every subtype?
+Can callers safely reason about each subtype through the base contract?
 ```
 
-If the answer is mainly “these fields are duplicated,” inheritance is usually too strong a relationship. Prefer keeping the models separate or extracting a value object / composition when that better represents the domain.
+If the main justification is only “these fields are duplicated,” inheritance is usually too strong. Keep the models separate or prefer composition/value objects when that better represents the domain.
 
-In particular, do not create a universal domain superclass merely to centralize technical or persistence metadata such as:
+Do not create a universal domain superclass merely to centralize technical or persistence metadata such as:
 
 ```text
 id
@@ -202,21 +171,19 @@ deleted
 version
 ```
 
-unless those fields genuinely form part of the shared domain abstraction. Persistence or audit metadata should remain with the boundary that owns those semantics rather than forcing unrelated business concepts into one inheritance hierarchy.
+unless those fields genuinely participate in the shared domain abstraction.
 
-Likewise, Request / Query / DTO / BO / DO / VO models should not inherit from a domain base class merely to reuse fields when their responsibilities and contracts differ.
+Likewise, Request / Query / DTO / BO / DO / VO models should not inherit from a domain base class merely to reuse fields across different contracts and responsibilities.
 
 Principle:
 
-> Extract a domain base class to express a real shared business abstraction, not merely to remove repeated fields. Inheritance models substitutable domain meaning; composition is often better for shared data without a true `is-a` relationship.
+> Domain inheritance expresses substitutable shared business meaning, not repeated storage fields.
 
 ---
 
-## 4. A Clean Architecture Entity Is Not the Same as a Persistence DO
+## 5. A Clean Architecture Entity Is Not a Persistence DO
 
-The concepts must be distinguished.
-
-A Clean Architecture Entity is closer to:
+A Clean Architecture Entity is conceptually close to:
 
 ```text
 critical business data
@@ -224,47 +191,28 @@ critical business data
 critical business rules
 ```
 
-In this Skill Pack, however:
+In this Skill Pack, `*DO` under the default `<module>.domain` responsibility Package is still a **database persistence model**. Its classification and Package semantics are owned by [layering.md](layering.md).
+
+Therefore, Clean Architecture terminology does not justify:
 
 ```text
-*DO
-<module>.domain
+adding business methods to every DO
+interpreting <module>.domain as an Entity package
+wrapping every table in a rich domain object
+adding Repository wrappers around existing Mappers
 ```
 
-still represents a **database persistence model** by default.
-
-Therefore, the presence of the `Entity` concept in this document does not justify mechanically doing any of the following:
-
-```text
-add business methods to every DO
-interpret <module>.domain as a Clean Architecture Entity package
-wrap every table in a rich domain object
-add Repository wrappers around existing Mappers
-```
-
-If a project truly uses an independent domain model, it may contain:
-
-```text
-persistence DO
-↔
-behavioral business object
-```
-
-but the conversion must represent a real difference in responsibility and provide real value.
-
-If no independent domain model exists, keeping stable rules in the correct Service / Manager is still better than introducing a valueless mapping layer for architectural appearance.
+If an independent behavioral model exists, persistence DO ↔ behavioral-object conversion must represent a real responsibility difference.
 
 Principle:
 
-> `DO` has a persistence responsibility; a Clean Architecture `Entity` has a business-rule responsibility. Similar naming—or a Package named `domain`—does not make them equivalent.
+> A persistence DO and a business-rule Entity are different concepts even when naming or directories look similar.
 
 ---
 
-## 5. Core Business Objects Do Not Own I/O or Application Flow
+## 6. Core Business Objects Do Not Own I/O or Application Flow
 
-Even when the project uses behavioral business objects, do not move all logic into them.
-
-A core business object may express behavior such as:
+A core business object may own behavior such as:
 
 ```text
 store
@@ -278,146 +226,79 @@ ensureAvailable
 It should not itself:
 
 ```text
-query the database
-persist itself
-open transactions
+query or persist through Mapper / DAO
+open application transactions
 send HTTP / RPC requests
-invoke third-party SDKs
-write to a message queue
+invoke vendor SDKs
+write messages
 send notifications
 read the current Web user
-construct an HTTP Response
+construct HTTP responses
 ```
 
-Avoid designs such as:
-
-```java
-caseInfo.store();
-caseInfo.saveDatabase();
-caseInfo.sendMessage();
-caseInfo.notifyPolice();
-```
-
-External collaboration belongs to boundaries such as Service / Manager / Mapper / Client.
+External collaboration remains application-layer orchestration. Exact Service / Manager / Mapper / Client dependency rules are defined by [layering.md](layering.md).
 
 Principle:
 
-> Business objects maintain their own rules. The application layer coordinates collaboration among business objects and between those objects and external systems.
+> Business objects maintain their own stable rules; the application coordinates I/O and collaboration around them.
 
 ---
 
-## 6. Dependencies Flow from Application Flow Toward Core Rules
+## 7. Rules That Depend on External State Need Application Coordination
 
-If the project has independent behavioral business objects, the recommended dependency direction is:
+Not every business rule belongs inside one object.
 
-```text
-Controller / Consumer / RPC
-          ↓
-       Service
-   (application use case)
-          ↓
-   core business object
-```
-
-The Service may also depend on:
+Examples include:
 
 ```text
-Manager
-Mapper / DAO
-Client / Adapter
+whether a code is unique
+whether the caller has permission
+whether a cabinet slot currently has capacity
+whether an unfinished record already exists
+whether multiple writes must succeed atomically
 ```
 
-A core business object should not depend back on:
+These depend on current database state, caller context, other objects, external systems, or transaction consistency. Coordinate them in the application layer using the responsibilities defined by `layering.md`.
 
-```text
-Controller
-Service / UseCase
-Spring MVC
-MyBatis / MyBatis-Plus
-Rabbit-SQL
-PostgreSQL
-third-party SDKs
-HTTP Request / Response
-```
+Do not make a business object access Mapper / Client merely to force all business logic into the object.
 
-If a supposed “core business object” must know SQL, the current Controller, a Spring Bean, or a vendor response in order to work, technical details have leaked back into the business core and the boundary should be reconsidered.
+Use `transactions.md` to determine consistency and transaction scope.
 
 ---
 
-## 7. Service Code Should Read Like a Business Flow, Not a Database Script
+## 8. Service Code Should Expose Business Meaning
 
-For a complex use case, high-level Service code should preferably express:
+For a complex use case, high-level application code should make the business sequence understandable:
 
 ```text
-load required business objects
-→ check conditions required by the use case
+load required state
+→ check use-case conditions
 → invoke stable business behavior
-→ coordinate other objects or external capabilities
+→ coordinate other capabilities
 → persist results
-→ build the business output
+→ build business output
 ```
 
-Conceptually:
-
-```java
-CaseDO caseDO = caseMapper.getById(caseId);
-CabinetDO cabinetDO = cabinetMapper.getById(cabinetId);
-
-// Depending on whether the project has a separate behavioral model,
-// invoke business behavior or enforce the rule in the application layer.
-
-storageRecordMapper.insert(record);
-```
-
-The point is not that `Case` / `Cabinet` Entity classes must exist. The point is to avoid degrading Service code into:
+The goal is not to require Entity classes. The goal is to avoid hiding business meaning inside a long database-field script such as:
 
 ```text
 query table
-→ if magic status
-→ set field
+→ compare magic status
+→ set fields
 → update
 → query another table
 → assemble protocol object
 ```
 
-while hiding the actual business meaning inside database field manipulation.
+Whether the rule is expressed by a behavioral object or remains in Service / Manager depends on stability, reuse, anti-bypass value, and project conventions.
 
 ---
 
-## 8. Rules That Depend on Current Database State Still Require Application-Layer Coordination
+## 9. Add Input/Output Isolation Only for Real Semantic Differences
 
-Not every “business rule” belongs inside one object.
+This section answers only **whether an extra application input/output model is justified**. The meanings and default Packages of Request / Query / DTO / BO / DO / VO remain defined by [layering.md](layering.md).
 
-Examples:
-
-```text
-whether a code is unique
-whether the current caller has permission
-whether a cabinet slot currently has enough remaining capacity
-whether an unfinished record already exists in the database
-whether two objects must be updated atomically
-```
-
-These rules depend on:
-
-```text
-current database state
-other objects
-caller context
-transaction consistency
-```
-
-They should be coordinated by Service / Manager within the correct transaction boundary, while object-local rules can still be invoked as needed.
-
-Do not make an Entity access Mapper / Repository / Client merely to keep the Entity “pure.”
-
-Continue to use `transactions.md` to determine transaction scope.
-
----
-
-## 9. Isolate Input and Output Models by Meaning, Not by Layer Count
-
-Clean Architecture encourages decoupling use-case input/output from external protocol models. That direction can be useful, but this Skill Pack does not require a fixed chain such as:
+Do not require a fixed chain such as:
 
 ```text
 Request
@@ -428,69 +309,65 @@ Request
 → VO
 ```
 
-Before adding an application input or output model, first ask whether a real semantic difference exists.
+Separate application models are useful when:
 
-Separate models are useful when:
+- multiple protocols reuse the same use case;
+- an external Request contains protocol fields the application layer should not know;
+- trusted server-side context must be separated from client input;
+- the use case needs a stable internal contract that materially differs from the external one;
+- public output differs materially from the internal business object.
 
-* HTTP / RPC / Message entry points reuse the same application use case;
-* an external Request contains protocol fields the application layer should not know about;
-* trusted server-side context must not come from the client Request;
-* a use case needs a stable internal input contract that clearly differs from the current interface model;
-* the public VO differs materially from a core business object in data or lifecycle.
+Extra conversion is usually unnecessary when:
 
-An extra conversion layer is usually unnecessary when:
-
-* Request / Query is already clear business input data and leaks no protocol objects;
-* there is only one entry point and Command would have exactly the same fields and meaning as Request;
-* Result and VO are merely field-for-field copies;
-* conversion adds boilerplate but isolates no source of change.
-
-Concrete business output should still preferably use VO. Neither DO nor core business objects should be exposed directly through a public HTTP API.
+- Request / Query already expresses the needed business input without protocol leakage;
+- Command would have exactly the same fields and meaning;
+- Result and VO are field-for-field copies;
+- the conversion layer isolates no real source of change.
 
 Principle:
 
-> Boundary models arise from semantic differences, not from a rule that every layer transition requires a new object.
+> Add a boundary model because the semantics differ, not because every layer transition needs another class.
 
 ---
 
 ## 10. Decision Flow for Rule Placement
 
-When you encounter a business decision, ask in this order:
+When a business decision appears, ask:
 
 ```text
-Would this rule still hold if the HTTP / UI / database implementation changed?
+Would the rule still hold if HTTP / UI / persistence technology changed?
         ↓
-No → it is more likely a protocol, application-flow, or technical rule
+No → likely protocol, application-flow, or technical rule
         ↓
 Yes
         ↓
 Is it a state transition, invariant, or stable calculation of one business concept?
         ↓
-Yes → if there is real reuse / anti-bypass value, consider encapsulating it in a behavioral business object
+Yes → if reuse / anti-bypass value is real, consider a behavioral business object
         ↓
 No
         ↓
-Does it depend on current database state, permissions, multiple objects, an external system, or a transaction?
+Does it depend on database state, permissions, multiple objects, external systems, or a transaction?
         ↓
-Yes → coordinate it in Service / Manager
+Yes → coordinate it in the application layer
         ↓
-No → place it according to the target project's existing responsibilities; do not create a layer merely for classification
+No → follow the target project's existing responsibility model; do not add a layer merely for classification
 ```
 
 Then check:
 
 ```text
-Is the same rule already duplicated across entry points / use cases?
-Can callers bypass it and directly set state?
-Would extraction make the business intent clearer?
-Would extraction introduce valueless mapping or another layer?
+Is the rule duplicated across entry points or use cases?
+Can callers bypass it and mutate state directly?
+Would extraction make business intent clearer?
+Would extraction introduce valueless conversion or another ceremonial layer?
 ```
 
 ---
 
 ## 11. An “Anemic Model” Is Not a Defect by Itself
 
-None of the following shapes alone proves an architectural problem:
+None of these alone proves an architectural problem:
 
 ```text
 DO contains only fields
@@ -500,40 +377,37 @@ there is no UseCase class
 there is no Repository interface
 ```
 
-Adjustment is warranted only when a concrete risk exists, for example:
+Adjustment is warranted only when there is a concrete risk, for example:
 
-```text
-the same state invariant is duplicated in multiple Services and the semantics have already drifted
-multiple callers can bypass a critical state check and directly mutate the object
-one Service simultaneously owns business flow, protocol conversion, SQL, third-party SDK handling, and state rules
-a core business object depends back on Spring / Mapper / Client
-an external API exposes persistence or core internal models directly, allowing external requirements to pollute internal boundaries
-```
+- the same invariant is duplicated and drifting across Services;
+- callers can bypass a critical state check;
+- protocol, SQL, vendor integration, and business rules are mixed into one use-case class;
+- a supposed core business object depends on framework or persistence details;
+- external APIs expose persistence or internal core objects directly and thereby pollute internal contracts.
 
 Principle:
 
-> Evaluate real responsibilities and change risks. Do not score the design according to “anemic model vs. rich domain model” ideology.
+> Evaluate responsibilities and change risk, not anemic-model versus rich-domain-model ideology.
 
 ---
 
-## 12. Codex Implementation Checklist
+## 12. Business-Rule Checklist
 
-When business rules, state transitions, or domain objects are involved, check:
+When business rules, state transitions, or behavioral domain objects are involved, check:
 
-1. The current rule comes from explicit requirements, an existing contract, tests, or stable implementation—not from an Agent inventing behavior.
-2. Core business rules and application use-case flows were distinguished first.
-3. The same stable invariant is not duplicated across multiple entry points / Services.
-4. If a behavioral object is extracted, it truly encapsulates a state transition, invariant, or stable calculation rather than wrapping setters.
-5. If common domain properties are extracted into a base class, the subclasses share one stable business abstraction and a real `is-a` / substitutability relationship; field duplication alone is not sufficient.
-6. A persistence DO is not incorrectly treated as a Clean Architecture Entity.
-7. Service still expresses the business use case rather than degrading into protocol or SQL scripting.
-8. Core business objects remain unaware of Spring, persistence frameworks, HTTP, and vendor SDKs.
-9. Database state, permissions, multi-object collaboration, and transaction rules are still coordinated correctly by Service / Manager.
-10. `Entity / UseCase / Repository / Command / Result` types are not added for form alone without a responsibility benefit.
-11. Request / Query / DTO / BO / DO / VO conversions each represent a real semantic change.
-12. If a core rule is extracted, corresponding unit tests are added or adjusted; if an application flow changes, relevant use-case tests cover it.
-13. The target project's stable structure is preserved rather than using the task as an excuse for a wholesale architectural migration.
+1. The rule comes from explicit requirements, contracts, tests, or stable implementation rather than invention.
+2. Core business rules and application use-case rules were distinguished first.
+3. Stable invariants are not duplicated across multiple entry points without reason.
+4. A behavioral object, when introduced, encapsulates real invariant/transition/calculation meaning rather than setters.
+5. A domain base class represents a true shared business abstraction and `is-a` relationship; field duplication alone is insufficient.
+6. Persistence DO is not confused with a Clean Architecture Entity.
+7. Core business objects remain unaware of HTTP, Spring, persistence frameworks, and vendor SDKs.
+8. Database state, permissions, multi-object coordination, and transaction rules remain application-layer responsibilities.
+9. Extra `Entity / UseCase / Repository / Command / Result` types each have a real semantic responsibility.
+10. Input/output conversion layers isolate an actual semantic or change boundary.
+11. Relevant tests are added or adjusted according to `testing.md` when behavior changes.
+12. The target project's stable architecture is preserved instead of being migrated wholesale.
 
 Final principle:
 
-> First identify the most stable business rules, then identify how the current application coordinates them. Protect business meaning from Web, database, and framework details—but isolate only real sources of change, and do not mechanically add architectural layers.
+> Identify stable business meaning first, then application coordination. Encapsulate rules when that prevents drift or bypass; otherwise prefer the simplest structure that preserves clear responsibilities.
