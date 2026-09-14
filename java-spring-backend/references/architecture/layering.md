@@ -354,6 +354,34 @@ lower layer → Controller
 
 Simple flows may skip optional layers but must preserve responsibility boundaries.
 
+### 9.1 Cross-Module Dependencies Must Remain Acyclic
+
+Cross-module dependencies must form a one-way acyclic graph. Before introducing a new dependency from one business module to another, inspect the existing dependency path and confirm that the new edge does not create a cycle.
+
+For example, avoid structures such as:
+
+```text
+case → place
+place → organization
+organization → case
+```
+
+Do not treat the following as architectural fixes for a module cycle:
+
+```text
+@Lazy
+static helpers
+ServiceLocator-style lookup
+calling another module's Mapper / Client / private Manager
+moving unrelated business logic into common
+```
+
+If a real cycle would be created, reconsider ownership first. When justified by a real stable contract, extract or invert the dependency at the appropriate boundary rather than hiding the cycle through framework mechanisms.
+
+Principle:
+
+> A dependency cycle means the participating modules no longer change independently; remove the cycle at the responsibility boundary rather than at the wiring layer.
+
 ---
 
 ## 10. Model Classification and Responsibility Packages
@@ -454,6 +482,8 @@ Is it inbound, use-case orchestration, reusable application capability, database
 Does an equivalent responsibility already exist?
         ↓
 Are dependencies one-way?
+        ↓
+Would a new cross-module dependency create a cycle?
         ↓
 If it is a model, is it Request / Query / DTO / BO / DO / VO?
         ↓
