@@ -179,6 +179,28 @@ Principle:
 
 > Domain inheritance expresses substitutable shared business meaning, not repeated storage fields.
 
+### 4.1 Similar Structure Does Not Imply a Shared Abstraction
+
+Before extracting a base class, shared DTO-like model, converter, helper, or common utility from similar code, determine whether the duplicated parts have the same semantics and the same reason to change.
+
+For example, these models may currently contain identical fields:
+
+```text
+PlaceResponse
+PlaceExportRow
+PlaceDTO
+```
+
+but their contracts may change independently because one follows an external API, one follows an export format, and one follows an internal application transfer need.
+
+Keep structurally similar code separate when the similarity is accidental and the responsibilities or change drivers differ. Extract shared code only when the shared meaning is stable enough that changing the abstraction should correctly affect all consumers.
+
+Do not use DRY as a reason to couple independent contracts.
+
+Principle:
+
+> Similar code is not automatically the same responsibility; reuse stable semantics, not appearance alone.
+
 ---
 
 ## 5. A Clean Architecture Entity Is Not a Persistence DO
@@ -358,8 +380,10 @@ Then check:
 
 ```text
 Is the rule duplicated across entry points or use cases?
+Does duplicated code share the same semantics and reason to change, or only a similar shape?
 Can callers bypass it and mutate state directly?
 Would extraction make business intent clearer?
+Would extraction couple contracts that should evolve independently?
 Would extraction introduce valueless conversion or another ceremonial layer?
 ```
 
@@ -400,13 +424,14 @@ When business rules, state transitions, or behavioral domain objects are involve
 3. Stable invariants are not duplicated across multiple entry points without reason.
 4. A behavioral object, when introduced, encapsulates real invariant/transition/calculation meaning rather than setters.
 5. A domain base class represents a true shared business abstraction and `is-a` relationship; field duplication alone is insufficient.
-6. Persistence DO is not confused with a Clean Architecture Entity.
-7. Core business objects remain unaware of HTTP, Spring, persistence frameworks, and vendor SDKs.
-8. Database state, permissions, multi-object coordination, and transaction rules remain application-layer responsibilities.
-9. Extra `Entity / UseCase / Repository / Command / Result` types each have a real semantic responsibility.
-10. Input/output conversion layers isolate an actual semantic or change boundary.
-11. Relevant tests are added or adjusted according to `testing.md` when behavior changes.
-12. The target project's stable architecture is preserved instead of being migrated wholesale.
+6. Similar fields or implementation shape were not treated as proof of one shared abstraction; extracted code has shared semantics and a common reason to change.
+7. Persistence DO is not confused with a Clean Architecture Entity.
+8. Core business objects remain unaware of HTTP, Spring, persistence frameworks, and vendor SDKs.
+9. Database state, permissions, multi-object coordination, and transaction rules remain application-layer responsibilities.
+10. Extra `Entity / UseCase / Repository / Command / Result` types each have a real semantic responsibility.
+11. Input/output conversion layers isolate an actual semantic or change boundary.
+12. Relevant tests are added or adjusted according to `testing.md` when behavior changes.
+13. The target project's stable architecture is preserved instead of being migrated wholesale.
 
 Final principle:
 
