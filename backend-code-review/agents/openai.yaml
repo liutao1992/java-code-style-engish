@@ -1,0 +1,6 @@
+interface:
+  display_name: "Backend Code Review"
+  short_description: "Review Java/Spring/MyBatis/Rabbit-SQL/PostgreSQL changes by loading team backend standards on demand and report findings with triggering conditions, locations, and evidence"
+  default_prompt: "Use $backend-code-review to review the current backend changes. First confirm the staged, unstaged, and relevant new-file scope, identify the actual persistence framework, load references on demand, and report evidence-backed issues by severity together with the actual validation scope."
+policy:
+  allow_implicit_invocation: true
