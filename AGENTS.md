@@ -19,17 +19,32 @@ This file retains hard constraints that apply continuously. Detailed coding know
 13. Do not bypass authentication, authorization, data-permission controls, or tenant isolation. Do not hard-code or log credentials such as passwords, Tokens, or private keys. Do not weaken existing security mechanisms.
 14. After changes, inspect the complete diff and run the project's existing relevant tests, static checks, and architecture checks. Do not disable checks, delete failing tests, weaken assertions, or hide exceptions merely to make validation pass.
 15. Report actual validation results and unverified items honestly. A review request is read-only by default and must not automatically become a fix task.
+16. Do not rewrite Git history merely to make a branch look cleaner. Commit-history restructuring is a separate operation and requires explicit user intent.
 
 ## Skill Entry Points
 
 - For Java / Spring Boot / MyBatis / MyBatis-Plus / Rabbit-SQL / PostgreSQL development, fixes, and refactoring, use [java-spring-backend](java-spring-backend/SKILL.md).
-- For backend code review, use [backend-code-review](backend-code-review/SKILL.md).
-- After development, self-review the current changes using the review Skill. Do not automatically create a separate agent, and do not rerun checks that have already passed and are unaffected by later changes.
+- For backend implementation review, use [backend-code-review](backend-code-review/SKILL.md). It finds evidence-backed correctness, architecture, security, transaction, concurrency, and maintainability problems; it does not own the verification pipeline.
+- For test quality and executable verification after implementation or review, use [review-and-test](review-and-test/SKILL.md). It owns tests, type checks, lint/static analysis, builds, and verification reporting.
+- For cleaning up or splitting a completed branch into semantic commits, use [rework-commits](rework-commits/SKILL.md). Invoke it explicitly only; it rewrites local Git history and must preserve the final repository tree exactly.
+
+Preferred completion flow for non-trivial backend changes:
+
+```text
+implementation
+→ backend-code-review
+→ fix confirmed issues
+→ review-and-test
+→ rework-commits only when explicitly requested
+→ PR / merge
+```
+
+Do not automatically create a separate agent, and do not rerun checks that have already passed and are unaffected by later changes.
 
 ## Source and Priority of Rules
 
 Apply rules in this order: explicit requirements of the current task → correctness, security, and data integrity → project architecture rules → applicable domain standards → reasonable consistency with the current module → general language and framework conventions. This ordering must never be used to override higher-level instructions or bypass security boundaries.
 
-Domain standards are maintained centrally under [java-spring-backend/references](java-spring-backend/references/). This directory is the only detailed standards source for this Skill Pack; do not maintain duplicate copies.
+Domain standards are maintained centrally under [java-spring-backend/references](java-spring-backend/references/). This directory is the only detailed backend standards source for this Skill Pack; do not maintain duplicate copies.
 
-Move or install the two Skills together and preserve their sibling-directory relationship. Keeping only this file does not replace the corresponding Skill files. For concrete security implementation, also inspect the target project's existing security standards; this pack does not contain a standalone `security.md`.
+Keep `java-spring-backend`, `backend-code-review`, and `review-and-test` as sibling Skills so they can share the central references without duplication. `rework-commits` is intentionally independent of backend language/framework rules, but should remain a sibling Skill when this pack is installed as a whole. Keeping only this file does not replace the corresponding Skill files. For concrete security implementation, also inspect the target project's existing security standards; this pack does not contain a standalone `security.md`.

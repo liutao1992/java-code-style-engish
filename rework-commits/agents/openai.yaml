@@ -1,0 +1,6 @@
+interface:
+  display_name: "Rework Commits"
+  short_description: "Explicitly rewrite a completed local branch into small semantic commits while preserving the final repository tree exactly and keeping a recovery path"
+  default_prompt: "Use $rework-commits to reorganize the completed local branch into semantic reviewable commits. Verify a clean state, determine the correct base, record ORIGINAL_HEAD and the original tree, create a recovery ref, plan commit boundaries, rebuild the commits, and prove the final tree is exactly unchanged. Do not push or force-push."
+policy:
+  allow_implicit_invocation: false
