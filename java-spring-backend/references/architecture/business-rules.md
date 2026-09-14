@@ -173,6 +173,43 @@ Principle:
 
 > Eliminate real duplication and bypassable invariants. Do not create another model layer merely to “eliminate anemic models.”
 
+### 3.1 Shared Domain Semantics May Be Extracted into a Base Class
+
+When multiple domain or behavioral business objects repeatedly carry the same properties, those properties may be extracted into a base class when they represent one stable shared domain concept.
+
+A base class is appropriate when the subclasses have a real `is-a` relationship and the inherited state has the same business meaning, invariants, and lifecycle across those subclasses.
+
+For example, if several concrete business objects are all kinds of the same business concept and consistently share identity and behavior, a domain base type may express that common meaning instead of duplicating it in every subtype.
+
+Do not introduce inheritance merely because several classes happen to contain fields with the same names. Before extracting a base class, confirm:
+
+```text
+Do the subclasses represent specializations of the same business concept?
+Do the shared properties have the same meaning and lifecycle in every subtype?
+Would a rule or invariant defined on the base type be valid for every subtype?
+Can callers safely reason about the subtype through the base-type contract?
+```
+
+If the answer is mainly “these fields are duplicated,” inheritance is usually too strong a relationship. Prefer keeping the models separate or extracting a value object / composition when that better represents the domain.
+
+In particular, do not create a universal domain superclass merely to centralize technical or persistence metadata such as:
+
+```text
+id
+createTime
+updateTime
+deleted
+version
+```
+
+unless those fields genuinely form part of the shared domain abstraction. Persistence or audit metadata should remain with the boundary that owns those semantics rather than forcing unrelated business concepts into one inheritance hierarchy.
+
+Likewise, Request / Query / DTO / BO / DO / VO models should not inherit from a domain base class merely to reuse fields when their responsibilities and contracts differ.
+
+Principle:
+
+> Extract a domain base class to express a real shared business abstraction, not merely to remove repeated fields. Inheritance models substitutable domain meaning; composition is often better for shared data without a true `is-a` relationship.
+
 ---
 
 ## 4. A Clean Architecture Entity Is Not the Same as a Persistence DO
@@ -487,14 +524,15 @@ When business rules, state transitions, or domain objects are involved, check:
 2. Core business rules and application use-case flows were distinguished first.
 3. The same stable invariant is not duplicated across multiple entry points / Services.
 4. If a behavioral object is extracted, it truly encapsulates a state transition, invariant, or stable calculation rather than wrapping setters.
-5. A persistence DO is not incorrectly treated as a Clean Architecture Entity.
-6. Service still expresses the business use case rather than degrading into protocol or SQL scripting.
-7. Core business objects remain unaware of Spring, persistence frameworks, HTTP, and vendor SDKs.
-8. Database state, permissions, multi-object collaboration, and transaction rules are still coordinated correctly by Service / Manager.
-9. `Entity / UseCase / Repository / Command / Result` types are not added for form alone without a responsibility benefit.
-10. Request / Query / DTO / BO / DO / VO conversions each represent a real semantic change.
-11. If a core rule is extracted, corresponding unit tests are added or adjusted; if an application flow changes, relevant use-case tests cover it.
-12. The target project's stable structure is preserved rather than using the task as an excuse for a wholesale architectural migration.
+5. If common domain properties are extracted into a base class, the subclasses share one stable business abstraction and a real `is-a` / substitutability relationship; field duplication alone is not sufficient.
+6. A persistence DO is not incorrectly treated as a Clean Architecture Entity.
+7. Service still expresses the business use case rather than degrading into protocol or SQL scripting.
+8. Core business objects remain unaware of Spring, persistence frameworks, HTTP, and vendor SDKs.
+9. Database state, permissions, multi-object collaboration, and transaction rules are still coordinated correctly by Service / Manager.
+10. `Entity / UseCase / Repository / Command / Result` types are not added for form alone without a responsibility benefit.
+11. Request / Query / DTO / BO / DO / VO conversions each represent a real semantic change.
+12. If a core rule is extracted, corresponding unit tests are added or adjusted; if an application flow changes, relevant use-case tests cover it.
+13. The target project's stable structure is preserved rather than using the task as an excuse for a wholesale architectural migration.
 
 Final principle:
 
