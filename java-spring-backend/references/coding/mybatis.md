@@ -577,65 +577,123 @@ Use ResultMap, column aliases, TypeHandler, or equivalent MyBatis mechanisms to 
 
 Do not let physical database naming spread into Java business models merely to save mapping code.
 
-### 9.1 Do Not Map the Same Result Twice
+### 9.1 Do Not Map the Same Field Twice
 
-A query must have one clear owner for converting SQL result names into Java property names.
+Every selected field must have one clear owner for converting its SQL result name into a Java property name.
 
-Do not use SQL `AS` aliases for Java-facing naming and then map those aliases again through an explicit `resultMap`. This creates two naming-conversion layers for the same field and two places that must remain synchronized.
+This rule applies to **all result fields**, without regard to how the field is produced, including:
 
-Avoid:
+```text
+ordinary table columns
+JOIN columns
+aggregate columns
+statistics columns
+calculated columns
+CASE expressions
+function results
+subquery projections
+other SQL expressions
+```
+
+Do not use SQL `AS` to perform Java-facing naming for a field and then map that alias again through an explicit `resultMap`. Once a field's SQL-to-Java naming conversion has been expressed by one mapping mechanism, do not express the same conversion a second time through another mechanism.
+
+Avoid even for ordinary table fields:
+
+```xml
+<select id="getPerson" resultMap="PersonResultMap">
+    SELECT
+        p.zjhm AS identity_number,
+        p.rqsj AS entry_time,
+        p.lqsj AS exit_time
+    FROM person p
+    WHERE p.id = #{id}
+</select>
+
+<resultMap id="PersonResultMap" type="PersonDO">
+    <result property="identityNumber" column="identity_number"/>
+    <result property="entryTime" column="entry_time"/>
+    <result property="exitTime" column="exit_time"/>
+</resultMap>
+```
+
+Here the same fields are mapped twice:
+
+```text
+zjhm → identity_number → identityNumber
+rqsj → entry_time      → entryTime
+lqsj → exit_time       → exitTime
+```
+
+The problem is the duplicated mapping boundary, not whether the field is a normal column, aggregate, statistic, or calculated expression.
+
+Choose one mapping strategy for each query.
+
+If `resultMap` owns the mapping boundary, keep the SQL result names at their database / SQL names and perform the Java-property mapping only in `resultMap`:
+
+```xml
+<select id="getPerson" resultMap="PersonResultMap">
+    SELECT
+        p.zjhm,
+        p.rqsj,
+        p.lqsj
+    FROM person p
+    WHERE p.id = #{id}
+</select>
+
+<resultMap id="PersonResultMap" type="PersonDO">
+    <result property="identityNumber" column="zjhm"/>
+    <result property="entryTime" column="rqsj"/>
+    <result property="exitTime" column="lqsj"/>
+</resultMap>
+```
+
+If SQL aliases own the mapping boundary, use `resultType` and let the aliases map directly to Java properties according to the project's MyBatis auto-mapping convention:
+
+```xml
+<select id="getPerson" resultType="PersonDO">
+    SELECT
+        p.zjhm AS identity_number,
+        p.rqsj AS entry_time,
+        p.lqsj AS exit_time
+    FROM person p
+    WHERE p.id = #{id}
+</select>
+```
+
+The same rule applies to statistics, aggregates, and calculated fields. For example, do not combine:
 
 ```xml
 <select id="selectFormalStats" resultMap="PlaceFormalStatsMap">
     SELECT
         COUNT(*) AS total_count,
-        COUNT(CASE WHEN f.yxx = #{enabledStatus} THEN 1 END) AS enabled_count,
-        COUNT(CASE WHEN f.yxx = #{disabledStatus} THEN 1 END) AS disabled_count,
-        COUNT(CASE WHEN (<include refid="NormalizedZxfl"/>) = #{centerType} THEN 1 END) AS center_count,
-        COUNT(CASE WHEN (<include refid="NormalizedZxfl"/>) = #{subCenterType} THEN 1 END) AS sub_center_count,
-        COUNT(CASE WHEN (<include refid="NormalizedZxfl"/>) = #{caseAreaType} THEN 1 END) AS case_area_count
+        COUNT(CASE WHEN f.yxx = #{enabledStatus} THEN 1 END) AS enabled_count
     FROM zfba_cs_001 f
 </select>
 
-<resultMap id="PlaceFormalStatsMap" type="com.skynet.fzpt.portal.entity.PlaceFormalStatsDO">
+<resultMap id="PlaceFormalStatsMap" type="PlaceFormalStatsDO">
     <result property="totalCount" column="total_count"/>
     <result property="enabledCount" column="enabled_count"/>
-    <result property="disabledCount" column="disabled_count"/>
-    <result property="centerCount" column="center_count"/>
-    <result property="subCenterCount" column="sub_center_count"/>
-    <result property="caseAreaCount" column="case_area_count"/>
 </resultMap>
 ```
 
-The example first renames calculated SQL results with `AS`, then performs another naming mapping from those aliases into Java properties. The same boundary is therefore expressed twice.
-
-Choose one mapping strategy for a query.
-
-If SQL aliases own the naming boundary, use `resultType` and let the selected aliases map directly to the Java result object according to the project's MyBatis auto-mapping convention:
+Prefer either alias + `resultType`:
 
 ```xml
-<select id="selectFormalStats"
-        resultType="com.skynet.fzpt.portal.entity.PlaceFormalStatsDO">
+<select id="selectFormalStats" resultType="PlaceFormalStatsDO">
     SELECT
         COUNT(*) AS total_count,
-        COUNT(CASE WHEN f.yxx = #{enabledStatus} THEN 1 END) AS enabled_count,
-        COUNT(CASE WHEN f.yxx = #{disabledStatus} THEN 1 END) AS disabled_count,
-        COUNT(CASE WHEN (<include refid="NormalizedZxfl"/>) = #{centerType} THEN 1 END) AS center_count,
-        COUNT(CASE WHEN (<include refid="NormalizedZxfl"/>) = #{subCenterType} THEN 1 END) AS sub_center_count,
-        COUNT(CASE WHEN (<include refid="NormalizedZxfl"/>) = #{caseAreaType} THEN 1 END) AS case_area_count
+        COUNT(CASE WHEN f.yxx = #{enabledStatus} THEN 1 END) AS enabled_count
     FROM zfba_cs_001 f
 </select>
 ```
 
-This form assumes the target project has the corresponding underscore-to-camel-case auto-mapping convention. If it does not, use the project's established direct alias convention rather than adding a second `resultMap` naming layer.
+or a single explicit `resultMap` mapping boundary when the SQL result names can remain stable.
 
-If `resultMap` owns the naming boundary, keep ordinary source column names stable and express the database-column-to-Java-property conversion only in the `resultMap`.
-
-`AS` may still be used when SQL itself needs a stable result label or disambiguation, but it must not become a second Java-property naming layer in a query that already uses `resultMap`. For aggregate or calculated projections that require aliases, prefer the alias + `resultType` form when it can express the mapping clearly.
+This rule does not forbid `AS` itself. `AS` may still be required for SQL semantics, duplicate-column disambiguation, derived tables, expressions, or stable SQL result labels. The prohibition is specifically against using `AS` as one Java-facing naming conversion and then adding another mapping of the same field through `resultMap`.
 
 Principle:
 
-> One query has one Java naming-mapping boundary. Do not alias a result for Java naming and then map the same alias again through `resultMap`.
+> Every result field is mapped from SQL naming to Java naming once. The rule applies equally to ordinary columns, joined columns, aggregates, statistics, calculations, and expressions.
 
 For database naming, read:
 
@@ -838,7 +896,7 @@ When modifying MyBatis / MyBatis-Plus code:
 7. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
 8. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
 9. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
-10. Check whether database-column to Java-property mappings are explicit and clear, and whether each query has exactly one Java naming-mapping boundary; do not use SQL aliases for Java naming and then map those aliases again through `resultMap`.
+10. Check every selected field for a single SQL-to-Java naming-mapping boundary, regardless of whether it is an ordinary column, JOIN column, aggregate, statistic, calculation, or expression; do not use a Java-facing SQL alias and then map the same field again through `resultMap`.
 11. Ensure TypeHandler performs technical conversion only.
 12. Ensure dynamic SQL remains readable and does not hide business flow.
 13. When SQL changes, also read `sql.md`.
@@ -859,7 +917,7 @@ Key review points:
 * standard `List<T>` query callers do not add unjustified `list == null ? emptyList : list` defenses;
 * when a source really is nullable, normalization occurs once at the nearest source boundary rather than at every Service / Manager layer;
 * physical database naming does not leak into Java unnecessarily;
-* each query uses one Java naming-mapping boundary rather than combining Java-facing SQL aliases with an explicit `resultMap` for the same fields;
+* every selected field—ordinary, joined, aggregate, statistical, calculated, or expression-based—uses one SQL-to-Java naming-mapping boundary rather than being mapped twice through `AS` and `resultMap`;
 * ResultMap clearly expresses column/property mapping;
 * `${}` does not receive raw user input;
 * TypeHandler does not contain business logic;
