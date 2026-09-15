@@ -577,11 +577,13 @@ Use ResultMap, column aliases, TypeHandler, or equivalent MyBatis mechanisms to 
 
 Do not let physical database naming spread into Java business models merely to save mapping code.
 
-### 9.1 Do Not Map the Same Field Twice
+### 9.1 Avoid Unnecessary Repeated Result Mapping
 
-Every selected field must have one clear owner for converting its SQL result name into a Java property name.
+A selected field should follow the shortest clear mapping path from its SQL result name to its Java property.
 
-This rule applies to **all result fields**, without regard to how the field is produced, including:
+Do not add an intermediate alias or an additional mapping layer unless that layer has an independent and necessary SQL or MyBatis responsibility. The problem is not the formal coexistence of `AS` and `resultMap`; the problem is mapping the same field multiple times when the extra step adds no semantic or technical value.
+
+This rule applies to **all result fields**, including:
 
 ```text
 ordinary table columns
@@ -595,9 +597,7 @@ subquery projections
 other SQL expressions
 ```
 
-Do not use SQL `AS` to perform Java-facing naming for a field and then map that alias again through an explicit `resultMap`. Once a field's SQL-to-Java naming conversion has been expressed by one mapping mechanism, do not express the same conversion a second time through another mechanism.
-
-Avoid even for ordinary table fields:
+Avoid unnecessary two-step naming such as:
 
 ```xml
 <select id="getPerson" resultMap="PersonResultMap">
@@ -616,7 +616,7 @@ Avoid even for ordinary table fields:
 </resultMap>
 ```
 
-Here the same fields are mapped twice:
+Here the intermediate aliases add no independent meaning:
 
 ```text
 zjhm → identity_number → identityNumber
@@ -624,11 +624,7 @@ rqsj → entry_time      → entryTime
 lqsj → exit_time       → exitTime
 ```
 
-The problem is the duplicated mapping boundary, not whether the field is a normal column, aggregate, statistic, or calculated expression.
-
-Choose one mapping strategy for each query.
-
-If `resultMap` owns the mapping boundary, keep the SQL result names at their database / SQL names and perform the Java-property mapping only in `resultMap`:
+The shorter mapping is clearer:
 
 ```xml
 <select id="getPerson" resultMap="PersonResultMap">
@@ -647,7 +643,7 @@ If `resultMap` owns the mapping boundary, keep the SQL result names at their dat
 </resultMap>
 ```
 
-If SQL aliases own the mapping boundary, use `resultType` and let the aliases map directly to Java properties according to the project's MyBatis auto-mapping convention:
+If SQL aliases themselves are the chosen Java-facing mapping boundary, use them directly with `resultType` or the project's established auto-mapping convention instead of adding another naming-only `resultMap` layer:
 
 ```xml
 <select id="getPerson" resultType="PersonDO">
@@ -660,7 +656,7 @@ If SQL aliases own the mapping boundary, use `resultType` and let the aliases ma
 </select>
 ```
 
-The same rule applies to statistics, aggregates, and calculated fields. For example, do not combine:
+The same principle applies to statistics, aggregates, and calculated fields. For example, avoid:
 
 ```xml
 <select id="selectFormalStats" resultMap="PlaceFormalStatsMap">
@@ -676,24 +672,43 @@ The same rule applies to statistics, aggregates, and calculated fields. For exam
 </resultMap>
 ```
 
-Prefer either alias + `resultType`:
+when the aliases exist only to be renamed again by `resultMap`. Prefer alias + `resultType`, or keep a single explicit `resultMap` boundary when that is the clearer mapping strategy.
+
+`AS` and `resultMap` may legitimately coexist when they serve different responsibilities. Examples include:
+
+* `AS` disambiguates duplicate column names from JOINs while `resultMap` builds nested objects;
+* `AS` gives a derived table, subquery projection, expression, or function result a necessary stable SQL label while `resultMap` performs association, collection, discriminator, constructor, ID, or TypeHandler mapping;
+* a database-specific SQL requirement needs an alias independently of Java property naming.
+
+For example:
 
 ```xml
-<select id="selectFormalStats" resultType="PlaceFormalStatsDO">
+<select id="getUserWithDepartment" resultMap="UserWithDepartmentMap">
     SELECT
-        COUNT(*) AS total_count,
-        COUNT(CASE WHEN f.yxx = #{enabledStatus} THEN 1 END) AS enabled_count
-    FROM zfba_cs_001 f
+        u.id AS user_id,
+        u.name AS user_name,
+        d.id AS department_id,
+        d.name AS department_name
+    FROM sys_user u
+    JOIN department d ON d.id = u.department_id
+    WHERE u.id = #{id}
 </select>
+
+<resultMap id="UserWithDepartmentMap" type="UserDO">
+    <id property="id" column="user_id"/>
+    <result property="name" column="user_name"/>
+    <association property="department" javaType="DepartmentDO">
+        <id property="id" column="department_id"/>
+        <result property="name" column="department_name"/>
+    </association>
+</resultMap>
 ```
 
-or a single explicit `resultMap` mapping boundary when the SQL result names can remain stable.
-
-This rule does not forbid `AS` itself. `AS` may still be required for SQL semantics, duplicate-column disambiguation, derived tables, expressions, or stable SQL result labels. The prohibition is specifically against using `AS` as one Java-facing naming conversion and then adding another mapping of the same field through `resultMap`.
+Here the aliases disambiguate SQL result columns and the `resultMap` constructs a nested object graph. They are not two unnecessary naming layers with the same responsibility.
 
 Principle:
 
-> Every result field is mapped from SQL naming to Java naming once. The rule applies equally to ordinary columns, joined columns, aggregates, statistics, calculations, and expressions.
+> Keep result mapping on the shortest clear path. Do not add intermediate aliases or mapping layers unless each layer has an independent and necessary semantic or technical purpose.
 
 For database naming, read:
 
@@ -896,7 +911,7 @@ When modifying MyBatis / MyBatis-Plus code:
 7. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
 8. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
 9. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
-10. Check every selected field for a single SQL-to-Java naming-mapping boundary, regardless of whether it is an ordinary column, JOIN column, aggregate, statistic, calculation, or expression; do not use a Java-facing SQL alias and then map the same field again through `resultMap`.
+10. Check every selected field for unnecessary repeated SQL-to-Java mapping. Do not treat `AS + resultMap` as automatically wrong; first determine whether the alias and the `resultMap` each have an independent and necessary SQL or mapping responsibility. Remove intermediate aliases or mapping layers that only rename the same field again without adding value.
 11. Ensure TypeHandler performs technical conversion only.
 12. Ensure dynamic SQL remains readable and does not hide business flow.
 13. When SQL changes, also read `sql.md`.
@@ -917,7 +932,8 @@ Key review points:
 * standard `List<T>` query callers do not add unjustified `list == null ? emptyList : list` defenses;
 * when a source really is nullable, normalization occurs once at the nearest source boundary rather than at every Service / Manager layer;
 * physical database naming does not leak into Java unnecessarily;
-* every selected field—ordinary, joined, aggregate, statistical, calculated, or expression-based—uses one SQL-to-Java naming-mapping boundary rather than being mapped twice through `AS` and `resultMap`;
+* result fields use the shortest clear mapping path, without intermediate aliases or additional mapping layers that have no independent semantic or technical responsibility;
+* `AS + resultMap` is allowed when each mechanism has a distinct necessary responsibility, such as SQL column disambiguation plus nested object mapping;
 * ResultMap clearly expresses column/property mapping;
 * `${}` does not receive raw user input;
 * TypeHandler does not contain business logic;
