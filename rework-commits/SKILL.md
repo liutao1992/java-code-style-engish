@@ -176,11 +176,11 @@ WIP
 Prefer intent-revealing entries such as:
 
 ```text
-Add discount-code persistence model
-Implement discount validation rules
-Expose discount-code API
-Add checkout discount integration
-Add regression coverage for expired codes
+新增优惠码持久化模型
+实现优惠码校验规则
+提供优惠码 API
+接入结算优惠逻辑
+补充过期优惠码回归测试
 ```
 
 ---
@@ -215,7 +215,7 @@ For each planned commit:
 2. stage them;
 3. inspect `git diff --cached` completely;
 4. ensure unrelated changes are excluded;
-5. commit with an intent-revealing message;
+5. commit with a Chinese intent-revealing message;
 6. continue to the next logical unit.
 
 If one file contains changes for multiple logical commits, use safe partial staging (`git add -p` when suitable, or an equivalent patch-based staging method). Do not group unrelated hunks merely because they share a file.
@@ -226,24 +226,38 @@ After each commit, inspect the remaining working-tree diff so omissions surface 
 
 ## 9. Commit Message Quality
 
-Prefer messages that describe the logical outcome:
+All rewritten Git commit messages must use Chinese by default, including both the subject and body.
+
+Keep unavoidable technical identifiers in their original form when that is clearer, for example:
 
 ```text
-Add discount code validation rules
-Preserve tenant scope when querying places
-Separate case registration from case management
+API
+HTTP
+PlaceManageService
+DataRow
+Issue #123
+```
+
+Do not switch the commit message itself to English merely because the repository's existing history uses English. Use another language only when the user explicitly requests it.
+
+Prefer concise Chinese messages that describe the logical outcome:
+
+```text
+新增优惠码校验规则
+查询场所时保留租户范围
+拆分案件登记与案件管理职责
 ```
 
 Avoid vague messages:
 
 ```text
-Update service
-Fix code
-Cleanup
-Changes
+更新代码
+修复问题
+清理代码
+修改内容
 ```
 
-Use a body only when it adds useful rationale, constraints, or non-obvious tradeoffs.
+Use a body only when it adds useful rationale, constraints, or non-obvious tradeoffs. When a body is needed, write it in Chinese as well.
 
 ---
 
