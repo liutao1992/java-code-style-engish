@@ -23,9 +23,9 @@ Core principles:
 
 > Physical database naming and Java business naming are isolated through explicit MyBatis mapping.
 
-> In MyBatis-Plus projects, reuse the basic CRUD supplied by `BaseMapper`. Custom queries and updates use explicit Mapper methods with complete, directly locatable native SQL.
+> In MyBatis-Plus projects, reuse the basic CRUD supplied by `BaseMapper`. Custom queries and updates use explicit Mapper methods with directly locatable native SQL.
 
-> Prefer SQL that can be read, located, copied, and executed directly during maintenance and debugging. Do not hide or assemble SQL through Wrapper chains, MyBatis dynamic SQL tags, or reusable SQL-fragment tags.
+> Prefer SQL that can be read, located, copied, and debugged directly during maintenance. Do not hide SQL behind Wrapper chains or excessive dynamic XML composition. A small number of simple `<if>` conditions may be used when optional query conditions genuinely require dynamic SQL, provided the main SQL structure remains directly visible.
 
 > MyBatis technical rules belong here. SQL rules are not duplicated here.
 
@@ -361,9 +361,7 @@ For example:
 ```java
 public interface PlaceMapper extends BaseMapper<PlaceDO> {
 
-    List<PlaceDO> listByStatusAndPlaceCode(
-            @Param("status") String status,
-            @Param("placeCode") String placeCode);
+    List<PlaceDO> listByQuery(PlaceQuery query);
 
     long countByStatus(@Param("status") String status);
 }
@@ -386,7 +384,7 @@ Principle:
 
 > MyBatis-Plus Mappers with a real persistence entity extend `BaseMapper` to reuse basic CRUD. Do not duplicate framework capabilities and do not invent an entity merely to inherit the interface.
 
-### 7.2 Keep Custom SQL Native, Complete, and Directly Debuggable
+### 7.2 Keep Custom SQL Native and Directly Debuggable
 
 Business code must not use MyBatis-Plus Wrapper condition builders for custom query or update conditions, including:
 
@@ -403,24 +401,22 @@ Wrappers.lambdaUpdate(...)
 
 The reason is maintainability and debuggability, not merely a preference for XML over Java.
 
-Custom SQL should remain a complete native SQL statement that a developer can:
+Custom SQL should remain directly visible in Mapper XML so that a developer can:
 
-1. locate directly from the Mapper method;
-2. read without mentally expanding framework-generated conditions;
-3. copy into a database client with minimal editing;
-4. compare directly with SQL from logs, slow-query records, or production diagnostics;
-5. debug with `EXPLAIN`, concrete parameters, and database-native tooling.
+1. locate it directly from the Mapper method;
+2. read the main SQL structure without mentally reconstructing framework-generated conditions;
+3. copy it into a database client with minimal editing;
+4. compare it directly with SQL from logs, slow-query records, or production diagnostics;
+5. debug it with `EXPLAIN`, concrete parameters, and database-native tooling.
 
 Wrapper chains work against this goal because the final SQL must be reconstructed from Java calls and framework behavior before it can be inspected or reproduced.
 
-For custom queries, updates, and statistics, use explicit Mapper methods with complete native SQL maintained in Mapper XML:
+For custom queries, updates, and statistics, use explicit Mapper methods with native SQL maintained in Mapper XML. Simple `<if>` conditions are allowed when optional filters genuinely require dynamic SQL:
 
 ```java
 public interface PlaceMapper extends BaseMapper<PlaceDO> {
 
-    List<PlaceDO> listByStatusAndPlaceCode(
-            @Param("status") String status,
-            @Param("placeCode") String placeCode);
+    List<PlaceDO> listByQuery(PlaceQuery query);
 
     int updateStatus(
             @Param("id") String id,
@@ -430,14 +426,19 @@ public interface PlaceMapper extends BaseMapper<PlaceDO> {
 ```
 
 ```xml
-<select id="listByStatusAndPlaceCode" resultMap="PlaceResultMap">
+<select id="listByQuery" resultMap="PlaceResultMap">
     SELECT
         id,
         csbh,
         zt
     FROM csxx
-    WHERE zt = #{status}
-      AND csbh = #{placeCode}
+    WHERE 1 = 1
+    <if test="placeCode != null and placeCode != ''">
+        AND csbh = #{placeCode}
+    </if>
+    <if test="status != null">
+        AND zt = #{status}
+    </if>
 </select>
 ```
 
@@ -445,7 +446,7 @@ Direct primary-key CRUD from `BaseMapper` is not custom SQL construction and may
 
 Principle:
 
-> Choose native SQL because it is easier to maintain and easier to debug. A custom Mapper statement should expose the SQL directly rather than requiring a developer to reconstruct it from Wrapper chains or framework-generated condition logic.
+> Choose native SQL because it is easier to maintain and easier to debug. Keep the main SQL directly visible; use `<if>` only for simple optional conditions where dynamic SQL is genuinely useful.
 
 ### 7.3 Do Not Hard-Code Business Constants in Mapper XML
 
@@ -788,28 +789,13 @@ Search the project for an equivalent implementation before adding a shared TypeH
 
 ---
 
-## 12. Use Complete Native SQL; Do Not Use Dynamic SQL Tags
+## 12. Keep Dynamic SQL Limited and Readable
 
-Custom Mapper SQL must be written as complete native SQL.
+Custom Mapper SQL should remain as close as practical to ordinary native SQL so that it stays easy to maintain and debug.
 
-Do not use MyBatis dynamic SQL tags to construct a statement at runtime, including:
+MyBatis `<if>` may be used for simple optional conditions when the actual SQL genuinely depends on whether a parameter is present.
 
-```text
-<if>
-<choose>
-<when>
-<otherwise>
-<foreach>
-<where>
-<set>
-<trim>
-```
-
-The purpose of this rule is maintainability and debuggability.
-
-A developer investigating a Mapper method should be able to see one complete SQL statement without first evaluating XML branches. A developer investigating production SQL should be able to locate the corresponding statement and reproduce it directly in the database client.
-
-Avoid:
+For example:
 
 ```xml
 <select id="listByQuery" resultMap="PlaceResultMap">
@@ -818,44 +804,54 @@ Avoid:
         csbh,
         zt
     FROM csxx
-    <where>
-        <if test="placeCode != null and placeCode != ''">
-            AND csbh = #{placeCode}
-        </if>
-        <if test="status != null">
-            AND zt = #{status}
-        </if>
-    </where>
+    WHERE 1 = 1
+    <if test="placeCode != null and placeCode != ''">
+        AND csbh = #{placeCode}
+    </if>
+    <if test="status != null">
+        AND zt = #{status}
+    </if>
 </select>
 ```
 
-Prefer a Mapper method whose SQL condition is explicit and fixed:
+This form keeps the main SQL visible while allowing a small number of optional predicates.
 
-```java
-List<PlaceDO> listByStatusAndPlaceCode(
-        @Param("status") String status,
-        @Param("placeCode") String placeCode);
+Use `<if>` when:
+
+* the condition is genuinely optional;
+* the condition is short and local;
+* the final SQL remains easy to understand from the XML;
+* using separate Mapper methods would create unnecessary duplication without improving clarity.
+
+Do not use `<if>` to implement business flow, nested state decisions, or large branches of unrelated SQL.
+
+Avoid building SQL through layers of dynamic tags such as:
+
+```text
+<choose>
+<when>
+<otherwise>
+<where>
+<set>
+<trim>
 ```
+
+unless the target project's existing implementation or a concrete SQL requirement makes one of them clearly necessary. Prefer ordinary SQL syntax plus small `<if>` blocks because it is easier to copy, reproduce, and debug.
+
+For common optional `WHERE` conditions, prefer keeping the SQL skeleton explicit, for example:
 
 ```xml
-<select id="listByStatusAndPlaceCode" resultMap="PlaceResultMap">
-    SELECT
-        id,
-        csbh,
-        zt
-    FROM csxx
-    WHERE zt = #{status}
-      AND csbh = #{placeCode}
-</select>
+WHERE 1 = 1
+<if test="status != null">
+    AND zt = #{status}
+</if>
 ```
 
-When different query shapes are genuinely required, prefer separate clearly named Mapper methods with separate complete SQL statements instead of one large dynamic statement whose final structure depends on runtime tags.
-
-This rule concerns SQL-construction tags. Structural MyBatis XML elements required to declare statements or result mappings, such as `<select>`, `<insert>`, `<update>`, `<delete>`, and `<resultMap>`, remain valid because they do not dynamically assemble SQL logic.
+rather than wrapping the entire condition block in another structural layer merely for convenience.
 
 Principle:
 
-> The SQL visible in Mapper XML should be as close as possible to the SQL executed by the database, so maintenance, log comparison, reproduction, and debugging remain straightforward.
+> Dynamic SQL is allowed where it solves a real optional-condition problem, but keep it minimal. The developer should still be able to understand the SQL structure directly from the Mapper XML and reproduce the executed SQL with little effort.
 
 ---
 
@@ -889,14 +885,16 @@ Mapper XML should keep:
 * a clear namespace;
 * easy correspondence between SQL and Mapper methods;
 * clear parameter names;
-* complete native SQL for each custom Mapper statement;
+* native SQL whose main structure is directly visible;
+* small, local `<if>` conditions where optional parameters genuinely require dynamic SQL;
 * explicit ResultMap where needed;
 * explicit TypeHandler usage;
 * business constants passed as Mapper parameters instead of scattered literals.
 
 Mapper XML should not contain:
 
-* MyBatis dynamic SQL construction tags such as `<if>`, `<where>`, `<choose>`, `<foreach>`, `<set>`, or `<trim>`;
+* excessive or deeply nested dynamic SQL construction;
+* business flow implemented through dynamic SQL branches;
 * SQL-fragment composition through `<sql>` / `<include>`;
 * complete business flows;
 * business authorization orchestration;
@@ -955,9 +953,9 @@ When modifying MyBatis / MyBatis-Plus code:
 3. Before adding a component, determine its Package from its responsibility.
 4. Check custom Mapper / DAO names for clear `get / list / count / insert / delete / update` data-access semantics; do not wrap existing MyBatis-Plus methods merely to rename them.
 5. In MyBatis-Plus projects, check whether entity Mapper / DAO extends `BaseMapper<DO>` and whether basic CRUD has been redeclared unnecessarily.
-6. Check for `QueryWrapper`, `LambdaQueryWrapper`, `UpdateWrapper`, and related Wrapper usage. Custom conditions should be expressed through explicit Mapper methods with complete native SQL.
-7. Check Mapper XML for dynamic SQL tags such as `<if>`, `<where>`, `<choose>`, `<foreach>`, `<set>`, and `<trim>`; replace runtime SQL assembly with complete fixed SQL statements.
-8. Check Mapper XML for `<sql>` / `<include>` fragment composition; keep each custom statement locally complete so it can be read, copied, and debugged directly.
+6. Check for `QueryWrapper`, `LambdaQueryWrapper`, `UpdateWrapper`, and related Wrapper usage. Custom conditions should be expressed through explicit Mapper methods and native SQL in XML.
+7. Check dynamic SQL usage. Simple local `<if>` conditions are allowed for genuine optional predicates; reject excessive nesting, business-flow branching, or dynamic structures that make the SQL difficult to locate, understand, copy, and debug.
+8. Check Mapper XML for `<sql>` / `<include>` fragment composition; keep each custom statement locally readable so it can be copied and debugged directly.
 9. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
 10. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
 11. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
@@ -974,8 +972,8 @@ Key review points:
 * MyBatis-Plus entity Mappers correctly reuse `BaseMapper`;
 * no meaningless forwarding wrappers are added around existing `BaseMapper` methods solely for naming;
 * Wrapper does not hide custom SQL inside Java business code;
-* custom Mapper SQL is complete native SQL that can be located, copied, and debugged directly;
-* Mapper XML does not use dynamic SQL construction tags;
+* custom Mapper SQL remains directly locatable and easy to debug;
+* simple `<if>` conditions are allowed for optional predicates, but dynamic SQL stays small and readable;
 * Mapper XML does not assemble statements through `<sql>` / `<include>` fragments;
 * XML does not hard-code values that belong to the Java business contract;
 * MyBatis technical components are not placed inside a business Mapper Package;
@@ -994,4 +992,4 @@ Key review points:
 
 Final principle:
 
-> The MyBatis / MyBatis-Plus reference optimizes custom data access for maintenance and debugging. MyBatis-Plus may provide stable basic CRUD through `BaseMapper`, but custom queries and updates remain explicit Mapper methods backed by complete native SQL that is easy to locate, copy, execute, compare with logs, and debug with database-native tools.
+> The MyBatis / MyBatis-Plus reference optimizes custom data access for maintenance and debugging. MyBatis-Plus may provide stable basic CRUD through `BaseMapper`; custom queries and updates remain explicit Mapper methods backed by native SQL whose main structure is directly visible. Simple `<if>` conditions are allowed when optional predicates genuinely require dynamic SQL, provided they remain local, readable, and easy to reproduce during debugging.
