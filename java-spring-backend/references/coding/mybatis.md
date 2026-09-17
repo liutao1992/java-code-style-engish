@@ -4,7 +4,7 @@ This document defines usage standards for MyBatis and MyBatis-Plus.
 
 This document answers:
 
-> How should Mapper, Mapper XML, MyBatis-Plus BaseMapper, parameter binding, ResultMap, TypeHandler, dynamic SQL, and MyBatis technical components be organized and implemented?
+> How should Mapper, Mapper XML, MyBatis-Plus BaseMapper, parameter binding, ResultMap, TypeHandler, native SQL, and MyBatis technical components be organized and implemented?
 
 For SQL correctness, safe scope, PostgreSQL semantics, and performance, read:
 
@@ -23,7 +23,9 @@ Core principles:
 
 > Physical database naming and Java business naming are isolated through explicit MyBatis mapping.
 
-> In MyBatis-Plus projects, reuse the basic CRUD supplied by `BaseMapper`. Keep custom conditional queries and updates as explicit Mapper methods with locatable SQL instead of hiding query semantics in Wrapper chains.
+> In MyBatis-Plus projects, reuse the basic CRUD supplied by `BaseMapper`. Custom queries and updates use explicit Mapper methods with complete, directly locatable native SQL.
+
+> Prefer SQL that can be read, located, copied, and executed directly during maintenance and debugging. Do not hide or assemble SQL through Wrapper chains, MyBatis dynamic SQL tags, or reusable SQL-fragment tags.
 
 > MyBatis technical rules belong here. SQL rules are not duplicated here.
 
@@ -359,9 +361,11 @@ For example:
 ```java
 public interface PlaceMapper extends BaseMapper<PlaceDO> {
 
-    List<PlaceDO> listByQuery(PlaceQuery query);
+    List<PlaceDO> listByStatusAndPlaceCode(
+            @Param("status") String status,
+            @Param("placeCode") String placeCode);
 
-    long countByQuery(PlaceQuery query);
+    long countByStatus(@Param("status") String status);
 }
 ```
 
@@ -382,9 +386,9 @@ Principle:
 
 > MyBatis-Plus Mappers with a real persistence entity extend `BaseMapper` to reuse basic CRUD. Do not duplicate framework capabilities and do not invent an entity merely to inherit the interface.
 
-### 7.2 Do Not Use MyBatis-Plus Wrapper Condition Builders in Business Code
+### 7.2 Keep Custom SQL Native, Complete, and Directly Debuggable
 
-Business code must not use MyBatis-Plus Wrapper condition builders for query or update conditions, including:
+Business code must not use MyBatis-Plus Wrapper condition builders for custom query or update conditions, including:
 
 ```text
 QueryWrapper
@@ -397,21 +401,26 @@ Wrappers.update(...)
 Wrappers.lambdaUpdate(...)
 ```
 
-Do not hide complex conditions in Service / Manager through chained Wrapper construction.
+The reason is maintainability and debuggability, not merely a preference for XML over Java.
 
-Reasons include:
+Custom SQL should remain a complete native SQL statement that a developer can:
 
-1. SQL logic becomes scattered in Java condition-building code instead of remaining reusable and centrally maintainable;
-2. when investigating slow SQL, production SQL, or database logs, developers cannot easily locate the corresponding XML / Mapper implementation from recognizable SQL fragments;
-3. complex Wrapper usage spreads data-access details into Service / Manager and weakens the Mapper / SQL boundary;
-4. progressively chained conditions often make final SQL semantics less readable and reviewable than explicit XML.
+1. locate directly from the Mapper method;
+2. read without mentally expanding framework-generated conditions;
+3. copy into a database client with minimal editing;
+4. compare directly with SQL from logs, slow-query records, or production diagnostics;
+5. debug with `EXPLAIN`, concrete parameters, and database-native tooling.
 
-For custom conditional queries, updates, and statistics, prefer explicit Mapper methods with SQL maintained in XML:
+Wrapper chains work against this goal because the final SQL must be reconstructed from Java calls and framework behavior before it can be inspected or reproduced.
+
+For custom queries, updates, and statistics, use explicit Mapper methods with complete native SQL maintained in Mapper XML:
 
 ```java
 public interface PlaceMapper extends BaseMapper<PlaceDO> {
 
-    List<PlaceDO> listByQuery(PlaceQuery query);
+    List<PlaceDO> listByStatusAndPlaceCode(
+            @Param("status") String status,
+            @Param("placeCode") String placeCode);
 
     int updateStatus(
             @Param("id") String id,
@@ -421,28 +430,22 @@ public interface PlaceMapper extends BaseMapper<PlaceDO> {
 ```
 
 ```xml
-<select id="listByQuery" resultMap="PlaceResultMap">
+<select id="listByStatusAndPlaceCode" resultMap="PlaceResultMap">
     SELECT
         id,
         csbh,
         zt
     FROM csxx
-    <where>
-        <if test="placeCode != null and placeCode != ''">
-            AND csbh = #{placeCode}
-        </if>
-        <if test="status != null">
-            AND zt = #{status}
-        </if>
-    </where>
+    WHERE zt = #{status}
+      AND csbh = #{placeCode}
 </select>
 ```
 
-Direct primary-key CRUD from `BaseMapper` is not Wrapper condition building and may be used normally.
+Direct primary-key CRUD from `BaseMapper` is not custom SQL construction and may be used normally.
 
 Principle:
 
-> Use MyBatis-Plus to reuse stable basic CRUD. Do not use Wrapper to move business queries back into Java; keep conditional SQL explicit, searchable, and reusable through Mapper methods and SQL resources.
+> Choose native SQL because it is easier to maintain and easier to debug. A custom Mapper statement should expose the SQL directly rather than requiring a developer to reconstruct it from Wrapper chains or framework-generated condition logic.
 
 ### 7.3 Do Not Hard-Code Business Constants in Mapper XML
 
@@ -785,9 +788,11 @@ Search the project for an equivalent implementation before adding a shared TypeH
 
 ---
 
-## 12. Dynamic SQL
+## 12. Use Complete Native SQL; Do Not Use Dynamic SQL Tags
 
-MyBatis dynamic SQL may appropriately use:
+Custom Mapper SQL must be written as complete native SQL.
+
+Do not use MyBatis dynamic SQL tags to construct a statement at runtime, including:
 
 ```text
 <if>
@@ -800,39 +805,80 @@ MyBatis dynamic SQL may appropriately use:
 <trim>
 ```
 
-For example:
+The purpose of this rule is maintainability and debuggability.
+
+A developer investigating a Mapper method should be able to see one complete SQL statement without first evaluating XML branches. A developer investigating production SQL should be able to locate the corresponding statement and reproduce it directly in the database client.
+
+Avoid:
 
 ```xml
-<where>
-    <if test="placeName != null and placeName != ''">
-        AND csmc LIKE CONCAT('%', #{placeName}, '%')
-    </if>
-    <if test="status != null">
-        AND zt = #{status}
-    </if>
-</where>
+<select id="listByQuery" resultMap="PlaceResultMap">
+    SELECT
+        id,
+        csbh,
+        zt
+    FROM csxx
+    <where>
+        <if test="placeCode != null and placeCode != ''">
+            AND csbh = #{placeCode}
+        </if>
+        <if test="status != null">
+            AND zt = #{status}
+        </if>
+    </where>
+</select>
 ```
 
-Dynamic SQL selects SQL structure. It should not implement complete business flows or complex business state machines.
+Prefer a Mapper method whose SQL condition is explicit and fixed:
 
-Correctness, safety, and efficiency of the SQL conditions themselves are determined by `sql.md`.
+```java
+List<PlaceDO> listByStatusAndPlaceCode(
+        @Param("status") String status,
+        @Param("placeCode") String placeCode);
+```
+
+```xml
+<select id="listByStatusAndPlaceCode" resultMap="PlaceResultMap">
+    SELECT
+        id,
+        csbh,
+        zt
+    FROM csxx
+    WHERE zt = #{status}
+      AND csbh = #{placeCode}
+</select>
+```
+
+When different query shapes are genuinely required, prefer separate clearly named Mapper methods with separate complete SQL statements instead of one large dynamic statement whose final structure depends on runtime tags.
+
+This rule concerns SQL-construction tags. Structural MyBatis XML elements required to declare statements or result mappings, such as `<select>`, `<insert>`, `<update>`, `<delete>`, and `<resultMap>`, remain valid because they do not dynamically assemble SQL logic.
+
+Principle:
+
+> The SQL visible in Mapper XML should be as close as possible to the SQL executed by the database, so maintenance, log comparison, reproduction, and debugging remain straightforward.
 
 ---
 
-## 13. Reusing SQL Fragments
+## 13. Do Not Compose SQL with `<sql>` / `<include>` Fragments
 
-Use:
+Do not use:
 
 ```xml
 <sql>
 <include>
 ```
 
-to reuse stable and clearly scoped SQL fragments where appropriate.
+to split or assemble custom SQL across reusable fragments.
 
-Do not create layers of nested `<sql>` fragments merely to eliminate a few repeated lines.
+Although fragment reuse can reduce repeated text, it makes maintenance and debugging harder because the complete SQL is no longer visible in one place. Developers must jump between fragment definitions before they can understand, copy, execute, or compare the final statement.
 
-> SQL readability takes precedence over formal DRY.
+Prefer each Mapper statement to contain its complete native SQL even when that means a small amount of deliberate SQL duplication.
+
+Do not optimize SQL files for formal DRY at the cost of direct readability and debuggability.
+
+Principle:
+
+> For Mapper SQL, a complete locally readable statement is more valuable than fragment-level reuse.
 
 ---
 
@@ -843,13 +889,15 @@ Mapper XML should keep:
 * a clear namespace;
 * easy correspondence between SQL and Mapper methods;
 * clear parameter names;
+* complete native SQL for each custom Mapper statement;
 * explicit ResultMap where needed;
-* readable dynamic SQL;
 * explicit TypeHandler usage;
 * business constants passed as Mapper parameters instead of scattered literals.
 
 Mapper XML should not contain:
 
+* MyBatis dynamic SQL construction tags such as `<if>`, `<where>`, `<choose>`, `<foreach>`, `<set>`, or `<trim>`;
+* SQL-fragment composition through `<sql>` / `<include>`;
 * complete business flows;
 * business authorization orchestration;
 * extensive decisions unrelated to database access;
@@ -907,16 +955,17 @@ When modifying MyBatis / MyBatis-Plus code:
 3. Before adding a component, determine its Package from its responsibility.
 4. Check custom Mapper / DAO names for clear `get / list / count / insert / delete / update` data-access semantics; do not wrap existing MyBatis-Plus methods merely to rename them.
 5. In MyBatis-Plus projects, check whether entity Mapper / DAO extends `BaseMapper<DO>` and whether basic CRUD has been redeclared unnecessarily.
-6. Check for `QueryWrapper`, `LambdaQueryWrapper`, `UpdateWrapper`, and related Wrapper usage; business conditional SQL should be an explicit Mapper method + XML.
-7. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
-8. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
-9. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
-10. Check every selected field for unnecessary repeated SQL-to-Java mapping. Do not treat `AS + resultMap` as automatically wrong; first determine whether the alias and the `resultMap` each have an independent and necessary SQL or mapping responsibility. Remove intermediate aliases or mapping layers that only rename the same field again without adding value.
-11. Ensure TypeHandler performs technical conversion only.
-12. Ensure dynamic SQL remains readable and does not hide business flow.
-13. When SQL changes, also read `sql.md`.
-14. When transactions are involved, read `transactions.md`.
-15. Run the target project's relevant existing tests.
+6. Check for `QueryWrapper`, `LambdaQueryWrapper`, `UpdateWrapper`, and related Wrapper usage. Custom conditions should be expressed through explicit Mapper methods with complete native SQL.
+7. Check Mapper XML for dynamic SQL tags such as `<if>`, `<where>`, `<choose>`, `<foreach>`, `<set>`, and `<trim>`; replace runtime SQL assembly with complete fixed SQL statements.
+8. Check Mapper XML for `<sql>` / `<include>` fragment composition; keep each custom statement locally complete so it can be read, copied, and debugged directly.
+9. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
+10. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
+11. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
+12. Check every selected field for unnecessary repeated SQL-to-Java mapping. Do not treat `AS + resultMap` as automatically wrong; first determine whether the alias and the `resultMap` each have an independent and necessary SQL or mapping responsibility. Remove intermediate aliases or mapping layers that only rename the same field again without adding value.
+13. Ensure TypeHandler performs technical conversion only.
+14. When SQL changes, also read `sql.md`.
+15. When transactions are involved, read `transactions.md`.
+16. Run the target project's relevant existing tests.
 
 Key review points:
 
@@ -924,7 +973,10 @@ Key review points:
 * custom Mapper / DAO names accurately express single-object, collection, count, insert, delete, and update semantics;
 * MyBatis-Plus entity Mappers correctly reuse `BaseMapper`;
 * no meaningless forwarding wrappers are added around existing `BaseMapper` methods solely for naming;
-* Wrapper does not hide conditional SQL inside Java business code;
+* Wrapper does not hide custom SQL inside Java business code;
+* custom Mapper SQL is complete native SQL that can be located, copied, and debugged directly;
+* Mapper XML does not use dynamic SQL construction tags;
+* Mapper XML does not assemble statements through `<sql>` / `<include>` fragments;
 * XML does not hard-code values that belong to the Java business contract;
 * MyBatis technical components are not placed inside a business Mapper Package;
 * existing TypeHandler / Interceptor / Plugin implementations are not duplicated;
@@ -942,4 +994,4 @@ Key review points:
 
 Final principle:
 
-> The MyBatis / MyBatis-Plus reference defines how Java connects to and maps SQL. MyBatis-Plus is used to reuse stable basic CRUD; custom conditions remain explicit SQL; standard collection queries return empty collections for no rows. The SQL reference determines whether SQL itself is correct, safe, clear, and efficient.
+> The MyBatis / MyBatis-Plus reference optimizes custom data access for maintenance and debugging. MyBatis-Plus may provide stable basic CRUD through `BaseMapper`, but custom queries and updates remain explicit Mapper methods backed by complete native SQL that is easy to locate, copy, execute, compare with logs, and debug with database-native tools.
