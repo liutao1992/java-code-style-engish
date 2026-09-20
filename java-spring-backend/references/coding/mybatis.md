@@ -19,13 +19,13 @@ Related references:
 
 Core principles:
 
-> Mapper defines data-access contracts and MyBatis mappings; it does not own business flow.
+> Mapper defines data-access contracts and MyBatis mappings; it does not own business rules or business flow. Business logic belongs in the Service layer.
 
 > Physical database naming and Java business naming are isolated through explicit MyBatis mapping.
 
 > In MyBatis-Plus projects, reuse the basic CRUD supplied by `BaseMapper`. Custom queries and updates use explicit Mapper methods with directly locatable native SQL.
 
-> Prefer SQL that can be read, located, copied, and debugged directly during maintenance. Do not hide SQL behind Wrapper chains or excessive dynamic XML composition. A small number of simple `<if>` conditions may be used when optional query conditions genuinely require dynamic SQL, provided the main SQL structure remains directly visible.
+> Prefer SQL that can be read, located, copied, and debugged directly during maintenance. Do not hide SQL behind Wrapper chains or excessive dynamic XML composition. A small number of simple `<if>` conditions may be used for optional query conditions, and `<sql>` / `<include>` may reuse genuinely shared, stable SQL fragments, provided the main SQL structure remains directly understandable.
 
 > MyBatis technical rules belong here. SQL rules are not duplicated here.
 
@@ -64,7 +64,7 @@ Mapper does not own:
 
 * HTTP / RPC;
 * business authorization decisions;
-* state transitions;
+* business rule evaluation and state transitions;
 * complete business flows;
 * business transaction orchestration;
 * third-party service calls.
@@ -489,7 +489,7 @@ SELECT 1
 COUNT(*)
 IS NULL / IS NOT NULL
 fixed LIMIT with explicit technical meaning
-required literals inside CASE / COALESCE and similar SQL structures
+technical literals inside CASE / COALESCE and similar SQL structures, provided the expression does not implement a business rule
 ```
 
 But if `'1'`, `'0'`, `'PENDING'`, or `'FORMAL'` actually means a business status or type, it must not remain hard-coded merely because it is convenient.
@@ -823,7 +823,7 @@ Use `<if>` when:
 * the final SQL remains easy to understand from the XML;
 * using separate Mapper methods would create unnecessary duplication without improving clarity.
 
-Do not use `<if>` to implement business flow, nested state decisions, or large branches of unrelated SQL.
+Do not use `<if>` or other SQL constructs to implement business flow, nested state decisions, or large branches of unrelated SQL. The Service layer must evaluate business rules and pass the resulting query parameters or update values to Mapper. SQL may perform database operations such as filtering, joining, aggregating, and updating with those explicit parameters; this is not permission to embed business decisions in SQL.
 
 Avoid building SQL through layers of dynamic tags such as:
 
@@ -855,26 +855,48 @@ Principle:
 
 ---
 
-## 13. Do Not Compose SQL with `<sql>` / `<include>` Fragments
+## 13. Reuse Shared SQL with `<sql>` / `<include>`
 
-Do not use:
+When multiple Mapper statements contain the **same stable SQL logic**, a shared `<sql>` fragment may be defined and referenced with `<include>`. Reuse only fragments with a clear, consistent purpose, such as a common column list or an identical JOIN / predicate block.
+
+For example:
 
 ```xml
-<sql>
-<include>
+<sql id="PlaceColumns">
+    p.id,
+    p.csbh,
+    p.zt
+</sql>
+
+<select id="getById" resultMap="PlaceResultMap">
+    SELECT
+        <include refid="PlaceColumns"/>
+    FROM csxx p
+    WHERE p.id = #{id}
+</select>
+
+<select id="listByStatus" resultMap="PlaceResultMap">
+    SELECT
+        <include refid="PlaceColumns"/>
+    FROM csxx p
+    WHERE p.zt = #{status}
+</select>
 ```
 
-to split or assemble custom SQL across reusable fragments.
+Keep each statement's main `SELECT` / `FROM` / `WHERE` structure visible and readily traceable. Before extracting a fragment, verify that its contents and purpose are actually shared; do not force unrelated statements into the same abstraction merely because some text looks similar.
 
-Although fragment reuse can reduce repeated text, it makes maintenance and debugging harder because the complete SQL is no longer visible in one place. Developers must jump between fragment definitions before they can understand, copy, execute, or compare the final statement.
+Do not:
 
-Prefer each Mapper statement to contain its complete native SQL even when that means a small amount of deliberate SQL duplication.
+* extract a fragment used only once or a trivial fragment that adds navigation without meaningful reuse;
+* build multi-level or deeply nested include chains;
+* use fragments to hide large, unrelated parts of the statement;
+* put business state decisions, authorization rules, or workflow branches into shared SQL fragments.
 
-Do not optimize SQL files for formal DRY at the cost of direct readability and debuggability.
+If reuse would obscure the resulting SQL, retaining a small amount of duplication is acceptable.
 
 Principle:
 
-> For Mapper SQL, a complete locally readable statement is more valuable than fragment-level reuse.
+> Reuse identical, stable SQL logic when it improves maintenance, while keeping each Mapper statement easy to locate, read, reconstruct, and debug.
 
 ---
 
@@ -887,6 +909,7 @@ Mapper XML should keep:
 * clear parameter names;
 * native SQL whose main structure is directly visible;
 * small, local `<if>` conditions where optional parameters genuinely require dynamic SQL;
+* limited `<sql>` / `<include>` reuse for identical, stable SQL fragments where it improves readability;
 * explicit ResultMap where needed;
 * explicit TypeHandler usage;
 * business constants passed as Mapper parameters instead of scattered literals.
@@ -895,7 +918,8 @@ Mapper XML should not contain:
 
 * excessive or deeply nested dynamic SQL construction;
 * business flow implemented through dynamic SQL branches;
-* SQL-fragment composition through `<sql>` / `<include>`;
+* excessive or nested fragment composition that obscures the executed SQL;
+* business decisions expressed via `CASE`, SQL expressions, dynamic tags, or fragments;
 * complete business flows;
 * business authorization orchestration;
 * extensive decisions unrelated to database access;
@@ -955,15 +979,16 @@ When modifying MyBatis / MyBatis-Plus code:
 5. In MyBatis-Plus projects, check whether entity Mapper / DAO extends `BaseMapper<DO>` and whether basic CRUD has been redeclared unnecessarily.
 6. Check for `QueryWrapper`, `LambdaQueryWrapper`, `UpdateWrapper`, and related Wrapper usage. Custom conditions should be expressed through explicit Mapper methods and native SQL in XML.
 7. Check dynamic SQL usage. Simple local `<if>` conditions are allowed for genuine optional predicates; reject excessive nesting, business-flow branching, or dynamic structures that make the SQL difficult to locate, understand, copy, and debug.
-8. Check Mapper XML for `<sql>` / `<include>` fragment composition; keep each custom statement locally readable so it can be copied and debugged directly.
-9. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
-10. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
-11. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
-12. Check every selected field for unnecessary repeated SQL-to-Java mapping. Do not treat `AS + resultMap` as automatically wrong; first determine whether the alias and the `resultMap` each have an independent and necessary SQL or mapping responsibility. Remove intermediate aliases or mapping layers that only rename the same field again without adding value.
-13. Ensure TypeHandler performs technical conversion only.
-14. When SQL changes, also read `sql.md`.
-15. When transactions are involved, read `transactions.md`.
-16. Run the target project's relevant existing tests.
+8. Check `<sql>` / `<include>` reuse: allow genuinely shared, stable SQL fragments, but reject trivial, deeply nested, or opaque composition. Keep each custom statement reconstructable for debugging.
+9. Check that business decisions, state transitions, and business-rule calculations occur in Service rather than in SQL, including SQL expressions and reusable fragments. Mapper should receive the evaluated conditions or values as parameters.
+10. Check whether XML hard-codes business status, type, source, or other business constants; pass them through Mapper parameters.
+11. Check whether parameters should use `#{}` and whether any `${}` is truly structural and allow-listed.
+12. Check collection Mapper Null contracts; standard collection queries should not trigger mechanical Null fallback in upper layers.
+13. Check every selected field for unnecessary repeated SQL-to-Java mapping. Do not treat `AS + resultMap` as automatically wrong; first determine whether the alias and the `resultMap` each have an independent and necessary SQL or mapping responsibility. Remove intermediate aliases or mapping layers that only rename the same field again without adding value.
+14. Ensure TypeHandler performs technical conversion only.
+15. When SQL changes, also read `sql.md`.
+16. When transactions are involved, read `transactions.md`.
+17. Run the target project's relevant existing tests.
 
 Key review points:
 
@@ -974,7 +999,8 @@ Key review points:
 * Wrapper does not hide custom SQL inside Java business code;
 * custom Mapper SQL remains directly locatable and easy to debug;
 * simple `<if>` conditions are allowed for optional predicates, but dynamic SQL stays small and readable;
-* Mapper XML does not assemble statements through `<sql>` / `<include>` fragments;
+* `<sql>` / `<include>` reuses truly shared SQL without making statements hard to reconstruct;
+* SQL and shared fragments do not implement business rules; Service evaluates business decisions and supplies parameters;
 * XML does not hard-code values that belong to the Java business contract;
 * MyBatis technical components are not placed inside a business Mapper Package;
 * existing TypeHandler / Interceptor / Plugin implementations are not duplicated;
@@ -987,9 +1013,9 @@ Key review points:
 * ResultMap clearly expresses column/property mapping;
 * `${}` does not receive raw user input;
 * TypeHandler does not contain business logic;
-* Mapper XML does not hide complex business flows;
+* Mapper XML does not contain business decisions or hide business flows;
 * SQL and transaction rules are not re-invented in this reference.
 
 Final principle:
 
-> The MyBatis / MyBatis-Plus reference optimizes custom data access for maintenance and debugging. MyBatis-Plus may provide stable basic CRUD through `BaseMapper`; custom queries and updates remain explicit Mapper methods backed by native SQL whose main structure is directly visible. Simple `<if>` conditions are allowed when optional predicates genuinely require dynamic SQL, provided they remain local, readable, and easy to reproduce during debugging.
+> The MyBatis / MyBatis-Plus reference optimizes custom data access for maintenance and debugging. MyBatis-Plus may provide stable basic CRUD through `BaseMapper`; custom queries and updates remain explicit Mapper methods backed by native SQL whose main structure is directly visible. Simple `<if>` conditions may handle optional predicates, and `<sql>` / `<include>` may reuse stable, identical SQL fragments, provided each statement remains readable and easy to reproduce. Business decisions stay in Service; Mapper SQL performs data access using explicitly supplied parameters.
